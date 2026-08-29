@@ -74,6 +74,9 @@
   .tofu-row .nm{font-weight:700;font-size:15px;flex:1}
   .tofu-row .st{font-size:12px;color:var(--muted)}
   .tofu-row .chev{color:var(--muted);font-size:18px}
+  .tofu-row .rowmain{cursor:pointer}
+  .tofu-row .forget{background:none;border:none;color:var(--muted);font-size:15px;padding:6px 9px;cursor:pointer;border-radius:8px}
+  .tofu-row .forget:hover{background:#fbe9e7;color:var(--bad)}
   .listwrap{display:flex;flex-direction:column;gap:9px}
 
   /* qr scan */
@@ -150,6 +153,8 @@
         <p class="sub">Chọn 1 Tofu để kết nối lại, hoặc thêm Tofu mới.</p>
         <div class="listwrap" id="tofuList"></div>
         <button class="btn" id="btnAddNew" style="margin-top:14px">＋ Thêm Tofu mới</button>
+        <button class="btn ghost" id="btnForgetAll" style="margin-top:8px;display:none">Quên tất cả Tofu</button>
+        <p class="sub" id="forgetNote" style="margin-top:10px;font-size:12px;display:none">📱 <b>iPhone:</b> sau khi Quên, vào <b>Cài đặt → Bluetooth</b> → bấm ⓘ cạnh <b>TOFU</b> → <b>Forget This Device</b>, để nó không tự kết nối chen ngang lần kích hoạt sau.</p>
       </div>
     </section>
 
@@ -198,7 +203,8 @@
           <p class="sub" style="margin-top:12px">Nhập mã này vào trang kích hoạt của server (làm tay). Xong Tofu tự báo và mở luồng chính.</p>
         </div>
         <div class="pill wait" id="actPill" style="margin:8px auto 0">Chờ…</div>
-        <button class="btn ghost" id="btnSkipAct" style="margin-top:16px">Đã kích hoạt / bỏ qua → Home</button>
+        <p class="sub" style="margin-top:14px;font-size:12px">⚠️ Kích hoạt lỗi / quá lâu / máy tắt giữa chừng? Server sẽ không gửi xác nhận → Tofu vẫn kẹt ở màn QR. Cách xử lý: <b>reset máy (giữ nút 7s)</b> rồi làm lại từ đầu (nhớ Quên device + gỡ bond iPhone).</p>
+        <button class="btn ghost" id="btnSkipAct" style="margin-top:12px">← Về danh sách Tofu</button>
       </div>
     </section>
 
@@ -263,12 +269,20 @@ function log(m,c){const t=new Date().toLocaleTimeString();const d=document.creat
 const LS='tofuList';
 function loadSaved(){try{return JSON.parse(localStorage.getItem(LS))||[];}catch(_){return[];}}
 function saveTofu(dev){let l=loadSaved();const id=dev.id||dev.name;if(!l.some(t=>t.id===id)){l.push({id,name:dev.name||'Tofu',added:Date.now()});try{localStorage.setItem(LS,JSON.stringify(l));}catch(_){}}}
+function forgetTofu(i){let l=loadSaved();const t=l[i];if(!t)return;
+  if(!confirm('Quên "'+(t.name||'Tofu')+'"?\n\nNhớ vào Cài đặt Bluetooth iPhone gỡ bond (Forget This Device) nữa, để nó không tự kết nối lần sau.'))return;
+  l.splice(i,1);try{localStorage.setItem(LS,JSON.stringify(l));}catch(_){}renderList();}
+function forgetAll(){if(!confirm('Quên TẤT CẢ Tofu đã lưu?\n\nNhớ gỡ bond từng cái trong Cài đặt Bluetooth iPhone nữa.'))return;
+  try{localStorage.removeItem(LS);}catch(_){}renderList();}
 function renderList(){const box=document.getElementById('tofuList');const l=loadSaved();
+  document.getElementById('btnForgetAll').style.display=l.length?'block':'none';
+  document.getElementById('forgetNote').style.display=l.length?'block':'none';
   if(!l.length){box.innerHTML='<div class="empty">Chưa kết nối Tofu nào.<br>Bấm “Thêm Tofu mới”.</div>';return;}
   box.innerHTML=l.map((t,i)=>`<div class="tofu-row" data-i="${i}"><span class="av">${tofuSVG('happy','#ffb27a',40)}</span>
-    <span style="flex:1"><div class="nm">${escapeHtml(t.name)}</div><div class="st">Chạm để kết nối lại</div></span>
-    <span class="chev">↻</span></div>`).join('');
-  box.querySelectorAll('.tofu-row').forEach(el=>el.addEventListener('click',()=>reconnect(l[+el.dataset.i])));}
+    <span class="rowmain" style="flex:1"><div class="nm">${escapeHtml(t.name)}</div><div class="st">Chạm để kết nối lại</div></span>
+    <button class="forget" data-f="${i}" title="Quên Tofu này">✕</button><span class="chev">↻</span></div>`).join('');
+  box.querySelectorAll('.rowmain').forEach(el=>el.addEventListener('click',()=>reconnect(l[+el.closest('.tofu-row').dataset.i])));
+  box.querySelectorAll('.forget').forEach(el=>el.addEventListener('click',e=>{e.stopPropagation();forgetTofu(+el.dataset.f);}));}
 
 /* ---------- state ---------- */
 let device=null,server=null,chars={},aps=[],scanBusy=false,flowNew=false;
@@ -434,11 +448,12 @@ function goBack(){ stopScan();
 
 /* ---------- wire ---------- */
 document.getElementById('btnAddNew').onclick=gotoScan;
+document.getElementById('btnForgetAll').onclick=forgetAll;
 document.getElementById('btnScanConnect').onclick=addNew;        // user-gesture -> picker (bat buoc)
 document.getElementById('btnScanSkip').onclick=()=>{stopScan();addNew();};
 document.getElementById('btnBack').onclick=goBack;
 document.getElementById('btnRescan').onclick=scan;
-document.getElementById('btnSkipAct').onclick=()=>{show('v-home');requestStatus();};
+document.getElementById('btnSkipAct').onclick=()=>{show('v-list');renderList();};
 document.getElementById('btnWifi2').onclick=()=>show('v-wifi');
 document.getElementById('btnRefresh').onclick=requestStatus;
 document.getElementById('btnFeed').onclick=()=>writeStr('feed','1').then(()=>setTimeout(requestStatus,500));
