@@ -121,6 +121,11 @@
   .stat .lb{width:66px;font-size:13px;font-weight:700}
   .stat .gauge{flex:1}
   .stat .val{width:40px;text-align:right;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .qtyrow{display:flex;align-items:center;gap:10px;margin:14px 0 0}
+  .qtyrow .qtylb{font-size:13px;font-weight:700;flex:1}
+  .qtybtn{width:36px;height:36px;border-radius:11px;background:#f4e7df;color:var(--brand-d);font-size:22px;font-weight:800;border:none;cursor:pointer;line-height:1}
+  .qtybtn:active{transform:translateY(1px)}
+  .qtyval{min-width:28px;text-align:center;font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
 
   /* activation code */
   .codebig{font-size:46px;font-weight:800;letter-spacing:10px;color:var(--brand-d);font-variant-numeric:tabular-nums}
@@ -234,7 +239,14 @@
         <div class="stat"><div class="ic">💧</div><div class="lb">Drink</div><div class="gauge" id="bDrink"></div><div class="val" id="vDrink">–</div></div>
         <div class="stat"><div class="ic">🔋</div><div class="lb">Battery</div><div class="gauge" id="bBat"></div><div class="val" id="vBat">–</div></div>
         <div class="stat"><div class="ic">🔗</div><div class="lb">Bonding</div><div class="gauge" id="bBond"></div><div class="val" id="vBond">–</div></div>
-        <div class="row" style="margin-top:14px">
+        <div class="qtyrow">
+          <span class="qtylb">🍽️ Số món / lượt</span>
+          <button class="qtybtn" id="qtyMinus">−</button>
+          <span class="qtyval" id="qtyVal">1</span>
+          <button class="qtybtn" id="qtyPlus">＋</button>
+        </div>
+        <p class="sub" style="margin:-2px 0 8px;font-size:11.5px">Cho nhiều món 1 lượt (vd 4 = +4× no) — anim chỉ chạy 1 lần.</p>
+        <div class="row">
           <button class="btn" id="btnFeed">🍖 Cho ăn</button>
           <button class="btn" id="btnDrink" style="background:#2f9fd0;box-shadow:0 6px 16px -6px #2f9fd0aa">💧 Cho uống</button>
         </div>
@@ -506,8 +518,12 @@ document.getElementById('btnRescan').onclick=scan;
 document.getElementById('btnSkipAct').onclick=()=>{show('v-list');renderList();};
 document.getElementById('btnWifi2').onclick=()=>show('v-wifi');
 document.getElementById('btnRefresh').onclick=requestStatus;
-document.getElementById('btnFeed').onclick=()=>writeStr('feed','1').then(()=>setTimeout(requestStatus,500));
-document.getElementById('btnDrink').onclick=()=>writeStr('drink','1').then(()=>setTimeout(requestStatus,500));
+let feedQty=1;
+function setQty(n){feedQty=Math.max(1,Math.min(10,n));document.getElementById('qtyVal').textContent=feedQty;}
+document.getElementById('qtyMinus').onclick=()=>setQty(feedQty-1);
+document.getElementById('qtyPlus').onclick=()=>setQty(feedQty+1);
+document.getElementById('btnFeed').onclick=()=>writeStr('feed',String(feedQty)).then(()=>setTimeout(requestStatus,600));
+document.getElementById('btnDrink').onclick=()=>writeStr('drink',String(feedQty)).then(()=>setTimeout(requestStatus,600));
 document.getElementById('pwCancel').onclick=closePw;
 document.getElementById('pwConnect').onclick=doConnectWifi;
 document.getElementById('connBtn').onclick=()=>document.getElementById('connModal').classList.remove('show');
