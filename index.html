@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tofu BLE Test</title>
+<!--
+  TOFU BLE TEST APP (Web Bluetooth) - test harness provisioning WiFi qua BLE.
+  Chay: Chrome/Edge (desktop hoac Android). KHONG iOS Safari. file:// hoac localhost.
+
+  LUONG:
+    Man dau = DANH SACH TOFU (localStorage nho may da pair).
+      - Chua co Tofu  -> "Them Tofu moi"  -> connect (picker) -> WiFi -> config
+                         -> hien MA KICH HOAT 6 so -> (user activate tay tren server)
+                         -> device bao "ACTIVATED" -> vao Home.
+      - Da co Tofu    -> bam "Reconnect" -> connect -> vao Home.
+
+  GIAO THUC BLE (rut tu firmware ble_manager):
+    Service 0x18F0
+    Cred 0xA002 WRITE (kenh lenh, chuoi ASCII):
+       "SCAN" -> quet ; "<ssid>/<pass>" -> noi wifi ; "STATUS" -> day JSON status
+    Scan 0xA001 NOTIFY: moi AP 1 JSON {"ssid","rssi","channel","auth"}
+    Status 0xA005 NOTIFY: "WIFI_SCAN_OK" / "WIFI_OK" / "WIFI_FAIL" / "WIFI_DISCONNECT"
+       + (CAN THEM HOOK FIRMWARE): "ACTIVATION_CODE:189790" / "ACTIVATED"
+    TofuStatus 0x1006 NOTIFY/READ: JSON {name,hunger,thirst,battery,temp,birth,wifiSignal,wifiSSID}
+    Hunger/Thirst/Battery 0x1001/2/3 READ/NOTIFY. Feed 0x1004 / Drink 0x1005 WRITE.
+-->
+<style>
+  :root{
+    --brand:#E8531A; --brand-d:#C63C0C; --header:#8E1B0B; --cream:#FFF3EC;
+    --ink:#231a16; --muted:#8a7b73; --line:#efe1d8; --card:#ffffff; --bg:#f3ede9;
+    --ok:#2f9e5f; --bad:#d0443a; --warn:#d9902a;
+    --tofu-a:#2a2d35; --tofu-b:#0f1115;
+    --shadow:0 1px 2px rgba(60,30,15,.06),0 12px 30px -14px rgba(60,30,15,.28);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;line-height:1.5}
+  .app{max-width:440px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column}
+
+  header{background:var(--header);color:#fff;padding:14px 18px;display:flex;align-items:center;gap:12px;
+    position:sticky;top:0;z-index:5}
+  header .back{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:0 4px;display:none}
+  header .logo{width:32px;height:32px;flex:0 0 auto}
+  header h1{font-size:17px;font-weight:700;margin:0}
+  header .conn{margin-left:auto;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px}
+  .cdot{width:9px;height:9px;border-radius:50%;background:#e6b3a6}
+  .cdot.on{background:#7ee0a0;box-shadow:0 0 8px #7ee0a0}
+
+  main{flex:1;padding:18px;display:flex;flex-direction:column;gap:16px}
+  .view{display:none;flex-direction:column;gap:16px}
+  .view.active{display:flex}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow)}
+  .card h2{margin:0 0 4px;font-size:16px;font-weight:700}
+  .card p.sub{margin:0 0 14px;color:var(--muted);font-size:13.5px}
+  .tofu-wrap{display:flex;justify-content:center;padding:8px 0 2px}
+  .tofu-wrap svg{filter:drop-shadow(0 16px 18px rgba(0,0,0,.22))}
+
+  button{font:inherit;cursor:pointer;border:none;border-radius:12px;font-weight:700}
+  .btn{background:var(--brand);color:#fff;padding:13px 18px;width:100%;font-size:15px;
+    box-shadow:0 6px 16px -6px rgba(232,83,26,.7);transition:filter .15s,transform .05s}
+  .btn:hover{filter:brightness(1.05)} .btn:active{transform:translateY(1px)}
+  .btn:disabled{background:#e7d9d0;color:#b3a49b;box-shadow:none;cursor:not-allowed}
+  .btn.sec{background:#f4e7df;color:var(--brand-d);box-shadow:none}
+  .btn.ghost{background:transparent;color:var(--muted);box-shadow:none}
+  .row{display:flex;gap:10px}.row .btn{flex:1}
+
+  /* tofu list */
+  .tofu-row{display:flex;align-items:center;gap:13px;padding:13px 14px;border:1px solid var(--line);
+    border-radius:14px;background:#fff;cursor:pointer;transition:border-color .12s}
+  .tofu-row:hover{border-color:var(--brand)}
+  .tofu-row .av{width:40px;height:40px;flex:0 0 auto}
+  .tofu-row .nm{font-weight:700;font-size:15px;flex:1}
+  .tofu-row .st{font-size:12px;color:var(--muted)}
+  .tofu-row .chev{color:var(--muted);font-size:18px}
+  .listwrap{display:flex;flex-direction:column;gap:9px}
+
+  /* qr scan */
+  .qrbox{position:relative;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:1/1;display:grid;place-items:center;margin-top:6px}
+  .qrbox video{width:100%;height:100%;object-fit:cover}
+  .qrframe{position:absolute;inset:16%;border:3px solid #fff;border-radius:14px;box-shadow:0 0 0 100vmax rgba(0,0,0,.30);pointer-events:none}
+  .qrmac{font-family:ui-monospace,"Cascadia Code",monospace;font-size:15px;margin:8px 0 2px;word-break:break-all}
+
+  /* wifi list */
+  .wifi{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .ap{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);
+    border-radius:12px;background:#fff;cursor:pointer;transition:border-color .12s,background .12s}
+  .ap:hover{border-color:var(--brand);background:#fff8f4}
+  .ap .nm{font-weight:600;font-size:14.5px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ap .meta{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+  .bars{display:inline-flex;align-items:flex-end;gap:2px;height:15px}
+  .bars i{width:3px;border-radius:1px;display:block;background:var(--muted)}
+  .empty{color:var(--muted);font-size:13.5px;text-align:center;padding:22px 0}
+
+  .pill{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;font-size:12.5px;font-weight:700}
+  .pill.ok{background:#e6f6ec;color:var(--ok)} .pill.bad{background:#fbe9e7;color:var(--bad)}
+  .pill.wait{background:#fdf1e0;color:var(--warn)} .pill.idle{background:#eee7e2;color:var(--muted)}
+
+  /* stats */
+  .namebar{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px}
+  .namebar .nm{font-size:19px;font-weight:800}
+  .namebar .lv{font-size:12px;font-weight:700;color:#fff;background:var(--brand);padding:3px 10px;border-radius:999px}
+  .stat{display:flex;align-items:center;gap:12px;margin:12px 0}
+  .stat .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:16px;background:#f5ece6;flex:0 0 auto}
+  .stat .lb{width:64px;font-size:13.5px;font-weight:600}
+  .stat .track{flex:1;height:12px;border-radius:6px;background:#efe4dc;overflow:hidden}
+  .stat .fill{height:100%;border-radius:6px;transition:width .4s}
+  .stat .val{width:44px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:var(--muted)}
+
+  /* activation code */
+  .codebig{font-size:46px;font-weight:800;letter-spacing:10px;color:var(--brand-d);font-variant-numeric:tabular-nums}
+
+  /* password sheet */
+  .modal{position:fixed;inset:0;background:rgba(20,10,6,.5);display:none;align-items:flex-end;justify-content:center;z-index:20}
+  .modal.show{display:flex}
+  .sheet{background:#fff;width:100%;max-width:440px;border-radius:20px 20px 0 0;padding:20px 20px 26px}
+  .sheet h3{margin:0 0 3px;font-size:16px}.sheet .ssid{color:var(--muted);font-size:13px;margin:0 0 14px}
+  .pwrow{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:2px 4px 2px 12px}
+  .pwrow input{flex:1;border:none;outline:none;font:inherit;padding:12px 0;background:transparent}
+  .pwrow .eye{background:none;color:var(--muted);padding:8px}.sheet .row{margin-top:16px}
+
+  .logwrap{margin-top:auto}
+  details{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  summary{padding:10px 14px;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer;list-style:none}
+  summary::-webkit-details-marker{display:none}
+  .log{font-family:ui-monospace,"Cascadia Code",monospace;font-size:11px;line-height:1.55;max-height:170px;overflow:auto;
+    padding:0 14px 12px;color:#4a3f39;white-space:pre-wrap;word-break:break-word}
+  .log .tx{color:#1462b3}.log .rx{color:#0a7d43}.log .er{color:#c0392b}.log .sy{color:#8a7b73}
+  .warnbar{background:#fdf1e0;color:#8a5a12;font-size:12.5px;padding:9px 14px;border-radius:10px;border:1px solid #f3ddb8;display:none}
+  .warnbar.show{display:block}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <button class="back" id="btnBack">←</button>
+    <span class="logo" id="hdrLogo"></span>
+    <h1 id="hdrTitle">Tofu</h1>
+    <span class="conn"><span class="cdot" id="cdot"></span><span id="connTxt">Chưa nối</span></span>
+  </header>
+
+  <main>
+    <div class="warnbar" id="warn">Trình duyệt không hỗ trợ Web Bluetooth. Dùng <b>Chrome</b>/<b>Edge</b> (máy tính hoặc Android).</div>
+
+    <!-- ===== LIST (Tofu selection) ===== -->
+    <section class="view active" id="v-list">
+      <div class="card">
+        <h2>Tofu của bạn</h2>
+        <p class="sub">Chọn 1 Tofu để kết nối lại, hoặc thêm Tofu mới.</p>
+        <div class="listwrap" id="tofuList"></div>
+        <button class="btn" id="btnAddNew" style="margin-top:14px">＋ Thêm Tofu mới</button>
+      </div>
+    </section>
+
+    <!-- ===== SCAN QR (them Tofu moi) ===== -->
+    <section class="view" id="v-scan">
+      <div class="card">
+        <h2>Quét QR trên Tofu</h2>
+        <p class="sub" id="qrHint">Hướng camera vào mã QR đang hiện trên màn hình Tofu.</p>
+        <div id="qrView" class="qrbox">
+          <video id="qrVideo" playsinline muted></video>
+          <div class="qrframe"></div>
+          <canvas id="qrCanvas" style="display:none"></canvas>
+        </div>
+        <div id="qrResult" style="display:none;text-align:center">
+          <div class="pill ok" style="margin:8px auto">✓ Đã đọc mã Tofu</div>
+          <div class="qrmac">🔗 <span id="qrMac">—</span></div>
+          <p class="sub">App thật sẽ tự bond bằng mã này. Bản web bắt buộc chọn thiết bị 1 lần ở bước sau (giới hạn trình duyệt).</p>
+          <button class="btn" id="btnScanConnect">Kết nối Tofu này →</button>
+        </div>
+        <button class="btn ghost" id="btnScanSkip" style="margin-top:12px">Bỏ qua quét → chọn thiết bị</button>
+      </div>
+    </section>
+
+    <!-- ===== WIFI ===== -->
+    <section class="view" id="v-wifi">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <h2 style="margin:0;flex:1">Chọn Wi-Fi</h2>
+          <span class="pill idle" id="wifiPill">—</span>
+        </div>
+        <p class="sub" id="wifiHint">Bấm “Quét” để tìm mạng quanh Tofu.</p>
+        <div class="wifi" id="apList"><div class="empty">Chưa quét.</div></div>
+        <button class="btn sec" id="btnRescan" style="margin-top:14px">↻ Quét lại</button>
+      </div>
+    </section>
+
+    <!-- ===== ACTIVATE (bắn mã 6 số lên đây) ===== -->
+    <section class="view" id="v-activate">
+      <div class="card" style="text-align:center">
+        <div class="tofu-wrap" id="tofuAct"></div>
+        <h2 id="actTitle">Đang kết nối server…</h2>
+        <p class="sub" id="actSub">Tofu vừa nối WiFi, đang lấy mã kích hoạt từ server. Chờ chút…</p>
+        <div id="codeBox" style="display:none">
+          <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Mã kích hoạt</div>
+          <div class="codebig" id="actCode">––––––</div>
+          <p class="sub" style="margin-top:12px">Nhập mã này vào trang kích hoạt của server (làm tay). Xong Tofu tự báo và mở luồng chính.</p>
+        </div>
+        <div class="pill wait" id="actPill" style="margin:8px auto 0">Chờ…</div>
+        <button class="btn ghost" id="btnSkipAct" style="margin-top:16px">Đã kích hoạt / bỏ qua → Home</button>
+      </div>
+    </section>
+
+    <!-- ===== HOME ===== -->
+    <section class="view" id="v-home">
+      <div class="card">
+        <div class="namebar"><span class="nm" id="hNm">My Tofu</span><span class="lv" id="hLv">Lv ?</span></div>
+        <p class="sub" id="hWifi" style="margin:2px 0 0">—</p>
+        <div class="tofu-wrap" id="tofuHome"></div>
+        <div class="stat"><div class="ic">🍖</div><div class="lb">Feed</div>
+          <div class="track"><div class="fill" id="bFeed" style="width:0%;background:#E8531A"></div></div><div class="val" id="vFeed">–</div></div>
+        <div class="stat"><div class="ic">💧</div><div class="lb">Drink</div>
+          <div class="track"><div class="fill" id="bDrink" style="width:0%;background:#2f9fd0"></div></div><div class="val" id="vDrink">–</div></div>
+        <div class="stat"><div class="ic">🔋</div><div class="lb">Battery</div>
+          <div class="track"><div class="fill" id="bBat" style="width:0%;background:#2f9e5f"></div></div><div class="val" id="vBat">–</div></div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="btnFeed">🍖 Cho ăn</button>
+          <button class="btn" id="btnDrink" style="background:#2f9fd0;box-shadow:0 6px 16px -6px #2f9fd0aa">💧 Cho uống</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn sec" id="btnRefresh">↻ Cập nhật</button>
+          <button class="btn sec" id="btnWifi2">Đổi Wi-Fi</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="logwrap"><details><summary>Nhật ký BLE (debug)</summary><div class="log" id="log"></div></details></div>
+  </main>
+</div>
+
+<!-- password sheet -->
+<div class="modal" id="pwModal"><div class="sheet">
+  <h3>Nhập mật khẩu Wi-Fi</h3><p class="ssid" id="pwSsid">SSID</p>
+  <div class="pwrow"><input id="pwInput" type="password" placeholder="Mật khẩu (trống nếu mạng mở)" autocomplete="off">
+    <button class="eye" id="pwEye" type="button">👁</button></div>
+  <div class="row"><button class="btn ghost" id="pwCancel">Huỷ</button><button class="btn" id="pwConnect">Kết nối</button></div>
+</div></div>
+
+<!-- jsQR: fallback giai ma QR cho Chrome desktop (Windows khong co BarcodeDetector) -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script>
+/* ---------- UUID ---------- */
+const u16 = n => '0000'+n.toString(16).padStart(4,'0')+'-0000-1000-8000-00805f9b34fb';
+const SVC=u16(0x18F0);
+const CH={scan:u16(0xA001),cred:u16(0xA002),status:u16(0xA005),hunger:u16(0x1001),
+  thirst:u16(0x1002),battery:u16(0x1003),feed:u16(0x1004),drink:u16(0x1005),tofu:u16(0x1006)};
+
+/* ---------- Tofu SVG ---------- */
+function tofuSVG(exp,glow,size){glow=glow||'#eaf6ff';const L=44,R=76,Y=54;let eyes;
+  if(exp==='happy')eyes=`<path d="M ${L-12} ${Y+5} Q ${L} ${Y-13} ${L+12} ${Y+5}" fill="none" stroke-width="8" stroke-linecap="round"/><path d="M ${R-12} ${Y+5} Q ${R} ${Y-13} ${R+12} ${Y+5}" fill="none" stroke-width="8" stroke-linecap="round"/>`;
+  else eyes=`<rect x="${L-8}" y="${Y-15}" width="16" height="30" rx="8"/><rect x="${R-8}" y="${Y-15}" width="16" height="30" rx="8"/>`;
+  return `<svg viewBox="0 0 120 128" width="${size||120}" role="img" aria-label="Tofu"><defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--tofu-a)"/><stop offset="1" stop-color="var(--tofu-b)"/></linearGradient></defs><rect x="10" y="16" width="100" height="100" rx="30" fill="url(#tg)"/><ellipse cx="42" cy="42" rx="30" ry="16" fill="#fff" opacity=".07"/><g style="fill:#f4fbff;stroke:#f4fbff;filter:drop-shadow(0 0 4px ${glow}) drop-shadow(0 0 9px ${glow})">${eyes}</g></svg>`;}
+document.getElementById('tofuAct').innerHTML=tofuSVG('neutral','#ffb27a',110);
+document.getElementById('tofuHome').innerHTML=tofuSVG('happy','#ffb27a',110);
+document.getElementById('hdrLogo').innerHTML=tofuSVG('neutral','#ffd9bf',32);
+
+/* ---------- log ---------- */
+const logEl=document.getElementById('log');
+function log(m,c){const t=new Date().toLocaleTimeString();const d=document.createElement('div');if(c)d.className=c;d.textContent=t+'  '+m;logEl.appendChild(d);logEl.scrollTop=logEl.scrollHeight;}
+
+/* ---------- saved tofu list (localStorage) ---------- */
+const LS='tofuList';
+function loadSaved(){try{return JSON.parse(localStorage.getItem(LS))||[];}catch(_){return[];}}
+function saveTofu(dev){let l=loadSaved();const id=dev.id||dev.name;if(!l.some(t=>t.id===id)){l.push({id,name:dev.name||'Tofu',added:Date.now()});try{localStorage.setItem(LS,JSON.stringify(l));}catch(_){}}}
+function renderList(){const box=document.getElementById('tofuList');const l=loadSaved();
+  if(!l.length){box.innerHTML='<div class="empty">Chưa kết nối Tofu nào.<br>Bấm “Thêm Tofu mới”.</div>';return;}
+  box.innerHTML=l.map((t,i)=>`<div class="tofu-row" data-i="${i}"><span class="av">${tofuSVG('happy','#ffb27a',40)}</span>
+    <span style="flex:1"><div class="nm">${escapeHtml(t.name)}</div><div class="st">Chạm để kết nối lại</div></span>
+    <span class="chev">↻</span></div>`).join('');
+  box.querySelectorAll('.tofu-row').forEach(el=>el.addEventListener('click',()=>reconnect(l[+el.dataset.i])));}
+
+/* ---------- state ---------- */
+let device=null,server=null,chars={},aps=[],scanBusy=false,flowNew=false;
+const enc=new TextEncoder(),dec=new TextDecoder();
+function setConn(on){document.getElementById('cdot').classList.toggle('on',on);document.getElementById('connTxt').textContent=on?(device?.name||'Đã nối'):'Chưa nối';}
+function show(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.getElementById(id).classList.add('active');
+  document.getElementById('btnBack').style.display = id==='v-list' ? 'none':'block';}
+function pill(el,t,k){el.textContent=t;el.className='pill '+k;}
+
+/* ---------- connect ---------- */
+async function addNew(){
+  if(!navigator.bluetooth){document.getElementById('warn').classList.add('show');return;}
+  try{ log('requestDevice (add new)…','sy');
+    const dev=await navigator.bluetooth.requestDevice({filters:[{services:[SVC]},{namePrefix:'TOFU'},{namePrefix:'Tofu'}],optionalServices:[SVC]});
+    await connectDevice(dev,true);
+  }catch(e){ log('Huỷ/lỗi: '+e.message,'er'); }
+}
+async function reconnect(saved){
+  if(!navigator.bluetooth){document.getElementById('warn').classList.add('show');return;}
+  try{ let dev=null;
+    if(navigator.bluetooth.getDevices){ const known=await navigator.bluetooth.getDevices();
+      dev=known.find(d=>d.id===saved.id); if(dev) log('Reconnect (đã cấp quyền): '+dev.name,'sy'); }
+    if(!dev){ log('Reconnect qua picker…','sy');
+      dev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:(saved.name||'Tofu').slice(0,4)},{namePrefix:'TOFU'},{services:[SVC]}],optionalServices:[SVC]}); }
+    await connectDevice(dev,false);
+  }catch(e){ log('Reconnect lỗi: '+e.message,'er'); }
+}
+async function connectDevice(dev,isNew){
+  device=dev; flowNew=isNew;
+  device.addEventListener('gattserverdisconnected',onDisconnect);
+  log('GATT connect '+dev.name+'…','sy');
+  server=await dev.gatt.connect();
+  const svc=await server.getPrimaryService(SVC);
+  chars={};
+  for(const [k,uuid] of Object.entries(CH)){ try{chars[k]=await svc.getCharacteristic(uuid);}catch(_){ log('thiếu char '+k,'er'); } }
+  await sub('scan',onScan); await sub('status',onStatus); await sub('tofu',onTofuStatus);
+  for(const k of ['hunger','thirst','battery']) await sub(k,e=>onNum(k,e));
+  saveTofu(dev); renderList(); setConn(true); log('Đã kết nối ✓','rx');
+  if(isNew){ show('v-wifi'); setTimeout(scan,500); }
+  else     { show('v-home'); setTimeout(requestStatus,400); }
+}
+async function sub(key,h){const c=chars[key];if(!c||!c.properties.notify)return;
+  try{await c.startNotifications();c.addEventListener('characteristicvaluechanged',h);}catch(_){log('subscribe '+key+' fail','er');}}
+function onDisconnect(){setConn(false);log('Mất kết nối','er');show('v-list');renderList();}
+
+/* ---------- quet QR (chi cho UX giong Figma; web van phai qua picker de connect) ---------- */
+let scanStream=null,scanRAF=null,qrDet=null;
+async function gotoScan(){show('v-scan');
+  document.getElementById('qrResult').style.display='none';
+  document.getElementById('qrView').style.display='';
+  document.getElementById('qrHint').textContent='Hướng camera vào mã QR trên màn hình Tofu.';
+  try{
+    scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const v=document.getElementById('qrVideo');v.srcObject=scanStream;await v.play();
+    if('BarcodeDetector'in window){try{const fs=await window.BarcodeDetector.getSupportedFormats();
+      if(fs.includes('qr_code'))qrDet=new window.BarcodeDetector({formats:['qr_code']});}catch(_){}}
+    if(!qrDet&&!window.jsQR)log('Khong co BarcodeDetector va jsQR chua tai -> dung nut Bo qua.','er');
+    scanLoop();
+  }catch(e){log('camera loi: '+e.message,'er');
+    document.getElementById('qrHint').textContent='Không mở được camera. Bấm “Bỏ qua quét → chọn thiết bị”.';}
+}
+async function scanLoop(){if(!scanStream)return;
+  const v=document.getElementById('qrVideo'),c=document.getElementById('qrCanvas');
+  if(v.videoWidth){c.width=v.videoWidth;c.height=v.videoHeight;const ctx=c.getContext('2d');
+    ctx.drawImage(v,0,0,c.width,c.height);let text=null;
+    if(qrDet){try{const codes=await qrDet.detect(c);if(codes.length)text=codes[0].rawValue;}catch(_){}}
+    else if(window.jsQR){const img=ctx.getImageData(0,0,c.width,c.height);const r=jsQR(img.data,img.width,img.height);if(r)text=r.data;}
+    if(text){onQR(text);return;}}
+  scanRAF=requestAnimationFrame(scanLoop);
+}
+function stopScan(){if(scanRAF)cancelAnimationFrame(scanRAF);scanRAF=null;
+  if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}}
+function onQR(text){stopScan();log('QR = '+text,'rx');
+  document.getElementById('qrView').style.display='none';
+  document.getElementById('qrResult').style.display='';
+  document.getElementById('qrMac').textContent=text;}
+
+/* ---------- write ---------- */
+async function writeCred(s){if(!chars.cred){log('no cred char','er');return;}log('TX cred: "'+s+'"','tx');await chars.cred.writeValue(enc.encode(s));}
+async function writeStr(k,s){if(!chars[k]){log('no char '+k,'er');return;}log('TX '+k+': "'+s+'"','tx');await chars[k].writeValue(enc.encode(s));}
+
+/* ---------- scan ---------- */
+async function scan(){if(scanBusy)return;scanBusy=true;aps=[];renderAPs();
+  pill(document.getElementById('wifiPill'),'Đang quét…','wait');
+  document.getElementById('wifiHint').textContent='Đang tìm mạng quanh Tofu…';
+  try{await writeCred('SCAN');}catch(e){log('scan fail','er');scanBusy=false;}}
+function onScan(e){const t=dec.decode(e.target.value);log('RX scan: '+t,'rx');
+  try{const ap=JSON.parse(t);if(ap.ssid&&!aps.some(a=>a.ssid===ap.ssid&&a.rssi===ap.rssi)){aps.push(ap);renderAPs();}}catch(_){}}
+function renderAPs(){const box=document.getElementById('apList');
+  if(!aps.length){box.innerHTML=scanBusy?'<div class="empty">Đang quét…</div>':'<div class="empty">Chưa có mạng.</div>';return;}
+  const s=[...aps].sort((a,b)=>(b.rssi||-99)-(a.rssi||-99));
+  box.innerHTML=s.map(ap=>{const lv=ap.rssi>=-55?4:ap.rssi>=-65?3:ap.rssi>=-75?2:1;
+    const bars=[6,9,12,15].map((h,i)=>`<i style="height:${i<lv?h:4}px;opacity:${i<lv?1:.35}"></i>`).join('');
+    const lock=(ap.auth&&ap.auth!=='OPEN')?'🔒':'';
+    return `<div class="ap" data-ssid="${encodeURIComponent(ap.ssid)}" data-open="${ap.auth==='OPEN'?1:0}"><span class="nm">${escapeHtml(ap.ssid)}</span><span class="meta">${lock}<span class="bars">${bars}</span></span></div>`;}).join('');
+  box.querySelectorAll('.ap').forEach(el=>el.addEventListener('click',()=>openPw(decodeURIComponent(el.dataset.ssid),el.dataset.open==='1')));}
+
+/* ---------- status handler ---------- */
+function onStatus(e){const s=dec.decode(e.target.value).trim();log('RX status: '+s,'rx');
+  const p=document.getElementById('wifiPill');
+  if(s==='WIFI_SCAN_OK'){scanBusy=false;pill(p,aps.length+' mạng','ok');
+    document.getElementById('wifiHint').textContent='Chọn 1 mạng để nhập mật khẩu.';
+    if(!aps.length)document.getElementById('apList').innerHTML='<div class="empty">Không tìm thấy mạng. Quét lại?</div>';}
+  else if(s==='WIFI_OK'){pill(p,'✓ Đã nối WiFi','ok');closePw();
+    if(flowNew){ gotoActivate(); } else { setTimeout(requestStatus,600); } }
+  else if(s==='WIFI_FAIL'){scanBusy=false;pill(p,'✗ Thất bại','bad');
+    document.getElementById('wifiHint').textContent='Sai mật khẩu hoặc không thấy mạng. Thử lại.';}
+  else if(s==='WIFI_DISCONNECT'){pill(p,'Mất kết nối','bad');}
+  else if(s.indexOf('ACTIVATION_CODE:')===0){ showActCode(s.slice(16).trim()); }
+  else if(s==='ACTIVATED'||s==='REGISTER_SUCCESS'){ onActivated(); }
+  else if(s==='PAIRING_MODE'){ log('Đang ở chế độ pair','sy'); }
+}
+
+/* ---------- activation ---------- */
+function gotoActivate(){show('v-activate');
+  document.getElementById('actTitle').textContent='Đang kết nối server…';
+  document.getElementById('actSub').style.display='';
+  document.getElementById('codeBox').style.display='none';
+  pill(document.getElementById('actPill'),'Chờ mã…','wait');}
+function showActCode(code){show('v-activate');
+  document.getElementById('actTitle').textContent='Kích hoạt thủ công';
+  document.getElementById('actSub').style.display='none';
+  document.getElementById('codeBox').style.display='';
+  document.getElementById('actCode').textContent=code;
+  pill(document.getElementById('actPill'),'Chờ kích hoạt trên server…','wait');
+  log('ACTIVATION CODE = '+code,'rx');}
+function onActivated(){pill(document.getElementById('actPill'),'✓ Đã kích hoạt','ok');
+  document.getElementById('actTitle').textContent='Kích hoạt thành công!';
+  log('ACTIVATED ✓','rx'); setTimeout(()=>{show('v-home');requestStatus();},900);}
+
+/* ---------- password / connect wifi ---------- */
+let pwSsid='';
+function openPw(ssid,isOpen){pwSsid=ssid;document.getElementById('pwSsid').textContent=ssid+(isOpen?' (mạng mở)':'');
+  document.getElementById('pwInput').value='';document.getElementById('pwModal').classList.add('show');if(!isOpen)document.getElementById('pwInput').focus();}
+function closePw(){document.getElementById('pwModal').classList.remove('show');}
+async function doConnectWifi(){const pass=document.getElementById('pwInput').value;
+  pill(document.getElementById('wifiPill'),'Đang nối…','wait');
+  document.getElementById('wifiHint').textContent='Đang nối "'+pwSsid+'"…';
+  await writeCred(pwSsid+'/'+pass);}
+
+/* ---------- home status ---------- */
+async function requestStatus(){try{await writeCred('STATUS');}catch(_){}
+  for(const k of ['hunger','thirst','battery']) readNum(k);}
+async function readNum(key){const c=chars[key];if(!c||!c.properties.read)return;try{const v=await c.readValue();onNum(key,{target:{value:v}});}catch(_){}}
+function onNum(key,e){const v=e.target.value;let n=null;
+  if(v.byteLength>=4)n=v.getFloat32(0,true);
+  if(n===null||isNaN(n)||n<0||n>1000)n=v.getUint8(0);
+  setBar(key,n);}
+function onTofuStatus(e){const t=dec.decode(e.target.value);log('RX tofu: '+t,'rx');
+  try{const j=JSON.parse(t);if(j.name)document.getElementById('hNm').textContent=j.name;
+    if('hunger'in j)setBar('hunger',j.hunger);if('thirst'in j)setBar('thirst',j.thirst);if('battery'in j)setBar('battery',j.battery);
+    document.getElementById('hWifi').textContent=j.wifiSSID?('📶 '+j.wifiSSID+' · '+(j.wifiSignal||0)+'%'):'Chưa nối WiFi';}catch(_){}}
+function setBar(key,n){n=Math.max(0,Math.min(100,Math.round(n)));const m={hunger:['bFeed','vFeed'],thirst:['bDrink','vDrink'],battery:['bBat','vBat']}[key];
+  if(!m)return;document.getElementById(m[0]).style.width=n+'%';document.getElementById(m[1]).textContent=n+'%';}
+
+/* ---------- misc ---------- */
+function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function goBack(){ stopScan();
+  if(document.getElementById('v-home').classList.contains('active')){show('v-wifi');}
+  else show('v-list'); }
+
+/* ---------- wire ---------- */
+document.getElementById('btnAddNew').onclick=gotoScan;
+document.getElementById('btnScanConnect').onclick=addNew;        // user-gesture -> picker (bat buoc)
+document.getElementById('btnScanSkip').onclick=()=>{stopScan();addNew();};
+document.getElementById('btnBack').onclick=goBack;
+document.getElementById('btnRescan').onclick=scan;
+document.getElementById('btnSkipAct').onclick=()=>{show('v-home');requestStatus();};
+document.getElementById('btnWifi2').onclick=()=>show('v-wifi');
+document.getElementById('btnRefresh').onclick=requestStatus;
+document.getElementById('btnFeed').onclick=()=>writeStr('feed','1').then(()=>setTimeout(requestStatus,500));
+document.getElementById('btnDrink').onclick=()=>writeStr('drink','1').then(()=>setTimeout(requestStatus,500));
+document.getElementById('pwCancel').onclick=closePw;
+document.getElementById('pwConnect').onclick=doConnectWifi;
+document.getElementById('pwEye').onclick=()=>{const i=document.getElementById('pwInput');i.type=i.type==='password'?'text':'password';};
+
+if(!navigator.bluetooth)document.getElementById('warn').classList.add('show');
+renderList();
+log('Sẵn sàng. Có Tofu -> Reconnect; chưa -> Thêm Tofu mới.','sy');
+</script>
+</body>
+</html>
