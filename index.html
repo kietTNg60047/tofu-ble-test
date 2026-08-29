@@ -101,15 +101,26 @@
   .pill.wait{background:#fdf1e0;color:var(--warn)} .pill.idle{background:#eee7e2;color:var(--muted)}
 
   /* stats */
-  .namebar{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px}
-  .namebar .nm{font-size:19px;font-weight:800}
-  .namebar .lv{font-size:12px;font-weight:700;color:#fff;background:var(--brand);padding:3px 10px;border-radius:999px}
-  .stat{display:flex;align-items:center;gap:12px;margin:12px 0}
-  .stat .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:16px;background:#f5ece6;flex:0 0 auto}
-  .stat .lb{width:64px;font-size:13.5px;font-weight:600}
-  .stat .track{flex:1;height:12px;border-radius:6px;background:#efe4dc;overflow:hidden}
-  .stat .fill{height:100%;border-radius:6px;transition:width .4s}
-  .stat .val{width:44px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:var(--muted)}
+  /* Home theo Figma */
+  .tofu-badge{background:linear-gradient(135deg,#F5701E,#E8531A);border-radius:20px;padding:18px 0 12px;
+    display:flex;flex-direction:column;align-items:center;position:relative;overflow:hidden}
+  .tofu-badge::before{content:"";position:absolute;top:-35%;right:-12%;width:65%;height:90%;background:rgba(255,255,255,.10);transform:rotate(24deg)}
+  .tofu-badge svg{filter:drop-shadow(0 12px 14px rgba(0,0,0,.30))}
+  .mood{color:#fff;font-size:11.5px;font-weight:700;opacity:.95;margin-top:8px;letter-spacing:.4px;text-transform:uppercase}
+  .gauge{display:flex;gap:3px;height:14px}
+  .gauge i{flex:1;border-radius:3px;background:#eadfd8;display:block;transition:background .3s}
+  .lvline{display:flex;align-items:center;gap:8px;margin:2px 0 5px}
+  .lvline .star{font-size:17px}
+  .lvline .lvname{font-weight:800;font-size:16px}
+  .lvline .xp{margin-left:auto;font-size:11px;color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums}
+  .nameline{display:flex;align-items:center;gap:8px;margin:4px 0 12px}
+  .nameline .nm{font-weight:800;font-size:15px}
+  .nameline .beans{margin-left:auto;font-size:12px;color:var(--brand-d);font-weight:800}
+  .stat{display:flex;align-items:center;gap:10px;margin:11px 0}
+  .stat .ic{width:24px;text-align:center;font-size:17px;flex:0 0 auto}
+  .stat .lb{width:66px;font-size:13px;font-weight:700}
+  .stat .gauge{flex:1}
+  .stat .val{width:40px;text-align:right;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
 
   /* activation code */
   .codebig{font-size:46px;font-weight:800;letter-spacing:10px;color:var(--brand-d);font-variant-numeric:tabular-nums}
@@ -211,16 +222,16 @@
     <!-- ===== HOME ===== -->
     <section class="view" id="v-home">
       <div class="card">
-        <div class="namebar"><span class="nm" id="hNm">My Tofu</span><span class="lv" id="hLv">Lv ?</span></div>
-        <p class="sub" id="hWifi" style="margin:2px 0 0">—</p>
-        <div class="tofu-wrap" id="tofuHome"></div>
-        <div class="stat"><div class="ic">🍖</div><div class="lb">Feed</div>
-          <div class="track"><div class="fill" id="bFeed" style="width:0%;background:#E8531A"></div></div><div class="val" id="vFeed">–</div></div>
-        <div class="stat"><div class="ic">💧</div><div class="lb">Drink</div>
-          <div class="track"><div class="fill" id="bDrink" style="width:0%;background:#2f9fd0"></div></div><div class="val" id="vDrink">–</div></div>
-        <div class="stat"><div class="ic">🔋</div><div class="lb">Battery</div>
-          <div class="track"><div class="fill" id="bBat" style="width:0%;background:#2f9e5f"></div></div><div class="val" id="vBat">–</div></div>
-        <div class="row" style="margin-top:8px">
+        <div class="tofu-badge"><div id="tofuHome"></div><div class="mood">Mood status</div></div>
+        <p class="sub" id="hWifi" style="margin:10px 0 8px;text-align:center">—</p>
+        <div class="lvline"><span class="star">⭐</span><span class="lvname" id="hLv">Level 1</span><span class="xp" id="hXp">0 / 500 XP</span></div>
+        <div class="gauge" id="gXp" style="margin-bottom:12px"></div>
+        <div class="nameline"><span style="font-size:15px">🫘</span><span class="nm" id="hNm">My Tofu</span><span class="beans" id="hBeans">0 beans</span></div>
+        <div class="stat"><div class="ic">🍖</div><div class="lb">Feed</div><div class="gauge" id="bFeed"></div><div class="val" id="vFeed">–</div></div>
+        <div class="stat"><div class="ic">💧</div><div class="lb">Drink</div><div class="gauge" id="bDrink"></div><div class="val" id="vDrink">–</div></div>
+        <div class="stat"><div class="ic">🔋</div><div class="lb">Battery</div><div class="gauge" id="bBat"></div><div class="val" id="vBat">–</div></div>
+        <div class="stat"><div class="ic">🔗</div><div class="lb">Bonding</div><div class="gauge" id="bBond"></div><div class="val" id="vBond">–</div></div>
+        <div class="row" style="margin-top:14px">
           <button class="btn" id="btnFeed">🍖 Cho ăn</button>
           <button class="btn" id="btnDrink" style="background:#2f9fd0;box-shadow:0 6px 16px -6px #2f9fd0aa">💧 Cho uống</button>
         </div>
@@ -281,7 +292,7 @@ function renderList(){const box=document.getElementById('tofuList');const l=load
   box.innerHTML=l.map((t,i)=>`<div class="tofu-row" data-i="${i}"><span class="av">${tofuSVG('happy','#ffb27a',40)}</span>
     <span class="rowmain" style="flex:1"><div class="nm">${escapeHtml(t.name)}</div><div class="st">Chạm để kết nối lại</div></span>
     <button class="forget" data-f="${i}" title="Quên Tofu này">✕</button><span class="chev">↻</span></div>`).join('');
-  box.querySelectorAll('.rowmain').forEach(el=>el.addEventListener('click',()=>reconnect(l[+el.closest('.tofu-row').dataset.i])));
+  box.querySelectorAll('.tofu-row').forEach(el=>el.addEventListener('click',()=>reconnect(l[+el.dataset.i])));
   box.querySelectorAll('.forget').forEach(el=>el.addEventListener('click',e=>{e.stopPropagation();forgetTofu(+el.dataset.f);}));}
 
 /* ---------- state ---------- */
@@ -433,12 +444,26 @@ function onNum(key,e){const v=e.target.value;let n=null;
   if(v.byteLength>=4)n=v.getFloat32(0,true);
   if(n===null||isNaN(n)||n<0||n>1000)n=v.getUint8(0);
   setBar(key,n);}
+/* gauge phan doan (giong Figma: 10 khoi nhu pin) */
+const SEG=10;
+function renderGauge(el,pct,color){if(!el)return;pct=Math.max(0,Math.min(100,pct||0));const on=Math.round(pct/100*SEG);
+  let h='';for(let i=0;i<SEG;i++)h+=`<i style="background:${i<on?color:'#eadfd8'}"></i>`;el.innerHTML=h;}
+const STATC={hunger:['bFeed','vFeed','#E8531A'],thirst:['bDrink','vDrink','#2f9fd0'],battery:['bBat','vBat','#2f9e5f']};
+function setBar(key,n){n=Math.max(0,Math.min(100,Math.round(n)));const m=STATC[key];if(!m)return;
+  renderGauge(document.getElementById(m[0]),n,m[2]);document.getElementById(m[1]).textContent=n+'%';}
+function setBond(n){n=Math.max(0,Math.min(100,Math.round(n)));renderGauge(document.getElementById('bBond'),n,'#c04ea0');document.getElementById('vBond').textContent=n+'%';}
+function initHomeGauges(){for(const k in STATC)renderGauge(document.getElementById(STATC[k][0]),0,STATC[k][2]);
+  renderGauge(document.getElementById('gXp'),0,'#f2b01e');renderGauge(document.getElementById('bBond'),0,'#c04ea0');}
 function onTofuStatus(e){const t=dec.decode(e.target.value);log('RX tofu: '+t,'rx');
-  try{const j=JSON.parse(t);if(j.name)document.getElementById('hNm').textContent=j.name;
+  try{const j=JSON.parse(t);
+    if(j.name)document.getElementById('hNm').textContent=j.name;
     if('hunger'in j)setBar('hunger',j.hunger);if('thirst'in j)setBar('thirst',j.thirst);if('battery'in j)setBar('battery',j.battery);
+    /* level/xp/beans/bonding: firmware CHUA bao qua BLE -> hien neu co, khong thi giu placeholder */
+    if('level'in j)document.getElementById('hLv').textContent='Level '+j.level;
+    if('xp'in j){const mx=j.xpMax||500;renderGauge(document.getElementById('gXp'),j.xp/mx*100,'#f2b01e');document.getElementById('hXp').textContent=(j.xp||0)+' / '+mx+' XP';}
+    if('beans'in j)document.getElementById('hBeans').textContent=(j.beans||0)+' beans';
+    if('bonding'in j)setBond(j.bonding);
     document.getElementById('hWifi').textContent=j.wifiSSID?('📶 '+j.wifiSSID+' · '+(j.wifiSignal||0)+'%'):'Chưa nối WiFi';}catch(_){}}
-function setBar(key,n){n=Math.max(0,Math.min(100,Math.round(n)));const m={hunger:['bFeed','vFeed'],thirst:['bDrink','vDrink'],battery:['bBat','vBat']}[key];
-  if(!m)return;document.getElementById(m[0]).style.width=n+'%';document.getElementById(m[1]).textContent=n+'%';}
 
 /* ---------- misc ---------- */
 function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -464,6 +489,7 @@ document.getElementById('pwEye').onclick=()=>{const i=document.getElementById('p
 
 if(!navigator.bluetooth)document.getElementById('warn').classList.add('show');
 renderList();
+initHomeGauges();
 log('Sẵn sàng. Có Tofu -> Reconnect; chưa -> Thêm Tofu mới.','sy');
 </script>
 </body>
