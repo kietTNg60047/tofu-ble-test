@@ -143,6 +143,9 @@
   .log .tx{color:#1462b3}.log .rx{color:#0a7d43}.log .er{color:#c0392b}.log .sy{color:#8a7b73}
   .warnbar{background:#fdf1e0;color:#8a5a12;font-size:12.5px;padding:9px 14px;border-radius:10px;border:1px solid #f3ddb8;display:none}
   .warnbar.show{display:block}
+  .connspin{font-size:42px;display:inline-block;line-height:1}
+  .connspin.spin{animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -254,6 +257,16 @@
   <div class="row"><button class="btn ghost" id="pwCancel">Huỷ</button><button class="btn" id="pwConnect">Kết nối</button></div>
 </div></div>
 
+<!-- overlay trang thai ket noi wifi -->
+<div class="modal" id="connModal" style="align-items:center">
+  <div class="sheet" style="border-radius:20px;max-width:340px;margin:0 16px;text-align:center;padding:28px 22px 24px">
+    <div class="connspin spin" id="connIcon">🔄</div>
+    <h3 id="connTitle" style="margin:12px 0 5px">Đang kết nối…</h3>
+    <p class="ssid" id="connMsg" style="margin:0">—</p>
+    <button class="btn" id="connBtn" style="margin-top:18px;display:none">← Chọn mạng khác</button>
+  </div>
+</div>
+
 <!-- jsQR: fallback giai ma QR cho Chrome desktop (Windows khong co BarcodeDetector) -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
@@ -315,13 +328,12 @@ async function addNew(){
 }
 async function reconnect(saved){
   if(!navigator.bluetooth){document.getElementById('warn').classList.add('show');return;}
-  try{ let dev=null;
-    if(navigator.bluetooth.getDevices){ const known=await navigator.bluetooth.getDevices();
-      dev=known.find(d=>d.id===saved.id); if(dev) log('Reconnect (đã cấp quyền): '+dev.name,'sy'); }
-    if(!dev){ log('Reconnect qua picker…','sy');
-      dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[SVC]}); }
+  /* Bluefy/iOS: getDevices() hay treo hoac connect khong that -> BO, dung thang
+   * picker giong Add new (da chay duoc). Nguoi dung chon lai TOFU 1 lan. */
+  try{ log('Reconnect "'+((saved&&saved.name)||'Tofu')+'": chọn thiết bị trong picker…','sy');
+    const dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[SVC]});
     await connectDevice(dev,false);
-  }catch(e){ log('Reconnect lỗi: '+e.message,'er'); }
+  }catch(e){ log('Reconnect lỗi/huỷ: '+e.message,'er'); }
 }
 async function connectDevice(dev,isNew){
   device=dev; flowNew=isNew;
@@ -399,9 +411,9 @@ function onStatus(e){const s=dec.decode(e.target.value).trim();log('RX status: '
   if(s==='WIFI_SCAN_OK'){scanBusy=false;pill(p,aps.length+' mạng','ok');
     document.getElementById('wifiHint').textContent='Chọn 1 mạng để nhập mật khẩu.';
     if(!aps.length)document.getElementById('apList').innerHTML='<div class="empty">Không tìm thấy mạng. Quét lại?</div>';}
-  else if(s==='WIFI_OK'){pill(p,'✓ Đã nối WiFi','ok');closePw();
-    if(flowNew){ gotoActivate(); } else { setTimeout(requestStatus,600); } }
-  else if(s==='WIFI_FAIL'){scanBusy=false;pill(p,'✗ Thất bại','bad');
+  else if(s==='WIFI_OK'){pill(p,'✓ Đã nối WiFi','ok');
+    connOk(()=>{ if(flowNew){ gotoActivate(); } else { show('v-home'); requestStatus(); } }); }
+  else if(s==='WIFI_FAIL'){scanBusy=false;pill(p,'✗ Thất bại','bad');connFail();
     document.getElementById('wifiHint').textContent='Sai mật khẩu hoặc không thấy mạng. Thử lại.';}
   else if(s==='WIFI_DISCONNECT'){pill(p,'Mất kết nối','bad');}
   else if(s.indexOf('ACTIVATION_CODE:')===0){ showActCode(s.slice(16).trim()); }
@@ -433,8 +445,21 @@ function openPw(ssid,isOpen){pwSsid=ssid;document.getElementById('pwSsid').textC
 function closePw(){document.getElementById('pwModal').classList.remove('show');}
 async function doConnectWifi(){const pass=document.getElementById('pwInput').value;
   pill(document.getElementById('wifiPill'),'Đang nối…','wait');
-  document.getElementById('wifiHint').textContent='Đang nối "'+pwSsid+'"…';
+  showConn(pwSsid);                       // dong sheet + hien overlay dang ket noi
   await writeCred(pwSsid+'/'+pass);}
+function showConn(ssid){closePw();
+  const ic=document.getElementById('connIcon');ic.textContent='🔄';ic.classList.add('spin');
+  document.getElementById('connTitle').textContent='Đang kết nối…';
+  document.getElementById('connMsg').textContent='“'+ssid+'”';
+  document.getElementById('connBtn').style.display='none';
+  document.getElementById('connModal').classList.add('show');}
+function connOk(cb){const ic=document.getElementById('connIcon');ic.textContent='✅';ic.classList.remove('spin');
+  document.getElementById('connTitle').textContent='Đã kết nối WiFi!';document.getElementById('connMsg').textContent='';
+  setTimeout(()=>{document.getElementById('connModal').classList.remove('show');if(cb)cb();},1000);}
+function connFail(){const ic=document.getElementById('connIcon');ic.textContent='❌';ic.classList.remove('spin');
+  document.getElementById('connTitle').textContent='Kết nối thất bại';
+  document.getElementById('connMsg').textContent='Sai mật khẩu hoặc không thấy mạng. Thử mạng khác nhé.';
+  document.getElementById('connBtn').style.display='block';}
 
 /* ---------- home status ---------- */
 async function requestStatus(){try{await writeCred('STATUS');}catch(_){}
@@ -485,6 +510,7 @@ document.getElementById('btnFeed').onclick=()=>writeStr('feed','1').then(()=>set
 document.getElementById('btnDrink').onclick=()=>writeStr('drink','1').then(()=>setTimeout(requestStatus,500));
 document.getElementById('pwCancel').onclick=closePw;
 document.getElementById('pwConnect').onclick=doConnectWifi;
+document.getElementById('connBtn').onclick=()=>document.getElementById('connModal').classList.remove('show');
 document.getElementById('pwEye').onclick=()=>{const i=document.getElementById('pwInput');i.type=i.type==='password'?'text':'password';};
 
 if(!navigator.bluetooth)document.getElementById('warn').classList.add('show');
