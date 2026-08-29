@@ -141,7 +141,7 @@
   </header>
 
   <main>
-    <div class="warnbar" id="warn">Trình duyệt không hỗ trợ Web Bluetooth. Dùng <b>Chrome</b>/<b>Edge</b> (máy tính hoặc Android).</div>
+    <div class="warnbar" id="warn">⚠️ Trình duyệt này KHÔNG có Web Bluetooth. <b>iPhone:</b> mở link trong app <b>Bluefy</b> (Safari &amp; Chrome-iOS đều không chạy BLE). <b>Android:</b> Chrome/Edge.</div>
 
     <!-- ===== LIST (Tofu selection) ===== -->
     <section class="view active" id="v-list">
@@ -282,7 +282,9 @@ function pill(el,t,k){el.textContent=t;el.className='pill '+k;}
 async function addNew(){
   if(!navigator.bluetooth){document.getElementById('warn').classList.add('show');return;}
   try{ log('requestDevice (add new)…','sy');
-    const dev=await navigator.bluetooth.requestDevice({filters:[{services:[SVC]},{namePrefix:'TOFU'},{namePrefix:'Tofu'}],optionalServices:[SVC]});
+    // acceptAllDevices: hien MOI thiet bi BLE (tranh Bluefy/iOS ken bo loc namePrefix/service).
+    // optionalServices phai co SVC de sau khi connect truy cap duoc service 0x18F0.
+    const dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[SVC]});
     await connectDevice(dev,true);
   }catch(e){ log('Huỷ/lỗi: '+e.message,'er'); }
 }
@@ -292,7 +294,7 @@ async function reconnect(saved){
     if(navigator.bluetooth.getDevices){ const known=await navigator.bluetooth.getDevices();
       dev=known.find(d=>d.id===saved.id); if(dev) log('Reconnect (đã cấp quyền): '+dev.name,'sy'); }
     if(!dev){ log('Reconnect qua picker…','sy');
-      dev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:(saved.name||'Tofu').slice(0,4)},{namePrefix:'TOFU'},{services:[SVC]}],optionalServices:[SVC]}); }
+      dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[SVC]}); }
     await connectDevice(dev,false);
   }catch(e){ log('Reconnect lỗi: '+e.message,'er'); }
 }
