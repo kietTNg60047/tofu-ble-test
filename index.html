@@ -125,6 +125,7 @@ html.frame .sb{display:flex;justify-content:space-between;align-items:flex-start
 .focus-ring{position:absolute;width:74px;height:74px;margin:-37px 0 0 -37px;border:2px solid #fff;border-radius:50%;z-index:3;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,.35),inset 0 0 0 1px rgba(0,0,0,.25);animation:focuspop .55s ease-out forwards}
 .focus-ring:after{content:"";position:absolute;inset:32px;border:1px solid rgba(255,255,255,.9);border-radius:50%}
 @keyframes focuspop{0%{transform:scale(1.45);opacity:0}25%{opacity:1}100%{transform:scale(1);opacity:.9}}
+.cam-diag{position:absolute;left:0;right:0;top:calc(var(--sat) + 544px);text-align:center;font-size:11px;line-height:16px;color:rgba(255,255,255,.55);z-index:2;pointer-events:none;font-variant-numeric:tabular-nums}
 .cam-hint{position:absolute;left:0;right:0;top:calc(var(--sat) + 520px);text-align:center;font-size:13px;line-height:20px;color:rgba(255,255,255,.82);z-index:2;pointer-events:none}
 .cam-ctl{position:absolute;left:24px;right:24px;bottom:calc(var(--sab) + 28px);z-index:2;display:flex;flex-direction:column;align-items:center;gap:16px}
 .cam-btn{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.22);color:#fff;display:grid;place-items:center;backdrop-filter:blur(4px)}
@@ -377,9 +378,12 @@ html.frame .home-ind{display:block}
     <div class="appbar dark"><button class="back" id="btnScanBack" aria-label="Back"><svg class="ic"><use href="#i-arrow"/></svg></button></div>
     <h1 class="scan-title">Scan Your Tofu</h1>
     <div class="cam-hint" id="camHint" hidden>Tap anywhere to focus</div>
+    <div class="cam-diag" id="scanDiag"></div>
     <div class="cam-ctl">
       <button class="cam-btn" id="btnTorch" hidden aria-label="Flashlight"><svg class="ic"><use href="#i-torch"/></svg></button>
+      <div class="exp" id="zoomWrap" hidden><b>&#8722;</b><input type="range" id="zoomSlider" aria-label="Zoom"><b>+</b></div>
       <div class="exp" id="expWrap" hidden><b>&#9788;&#8722;</b><input type="range" id="expSlider" aria-label="Exposure"><b>&#9788;+</b></div>
+      <button class="ghost" id="btnScanManual" style="color:#fff" hidden>Can't read it? Choose the device manually</button>
     </div>
     <div class="qr-invalid" id="qrInvalid" hidden>
       <i class="handle"></i>
@@ -757,6 +761,7 @@ async function gotoScan(){go('s-scan');$('qrInvalid').hidden=true;$('qrDemo').hi
     if(cur!=='s-scan'){st.getTracks().forEach(t=>t.stop());return;}
     scanStream=st;const v=$('qrVideo');v.srcObject=scanStream;await v.play();
     if(cur!=='s-scan'){stopScan();return;}
+    scanTick=0;scanT0=Date.now();$('btnScanManual').hidden=true;$('scanDiag').textContent='';
     await initCam();
     if('BarcodeDetector'in window){try{const fs=await window.BarcodeDetector.getSupportedFormats();if(fs.includes('qr_code'))qrDet=new window.BarcodeDetector({formats:['qr_code']});}catch(_){}}
     if(!qrDet&&!window.jsQR)log('No BarcodeDetector and jsQR not loaded -> use manual pick.','er');
@@ -767,6 +772,11 @@ async function gotoScan(){go('s-scan');$('qrInvalid').hidden=true;$('qrDemo').hi
 async function initCam(){
   camTrack=scanStream.getVideoTracks()[0];
   camCaps=camTrack.getCapabilities?(camTrack.getCapabilities()||{}):{};
+  // a QR on the device's little screen is only a few pixels per module at 1080p -> take the max the sensor offers
+  if(camCaps.width&&camCaps.height&&camCaps.width.max>1920){
+    try{await camTrack.applyConstraints({width:{ideal:Math.min(camCaps.width.max,3840)},
+                                         height:{ideal:Math.min(camCaps.height.max,2160)}});}catch(_){}
+    camCaps=camTrack.getCapabilities?(camTrack.getCapabilities()||{}):camCaps;}
   const adv=[];
   if(camCaps.focusMode&&camCaps.focusMode.includes('continuous'))adv.push({focusMode:'continuous'});
   if(camCaps.exposureMode&&camCaps.exposureMode.includes('continuous'))adv.push({exposureMode:'continuous'});
@@ -776,12 +786,22 @@ async function initCam(){
   if(ec){const sl=$('expSlider');sl.min=ec.min;sl.max=ec.max;sl.step=ec.step||((ec.max-ec.min)/20||0.1);
     sl.value=(camTrack.getSettings&&camTrack.getSettings().exposureCompensation)||0;$('expWrap').hidden=false;}
   else $('expWrap').hidden=true;
+  const z=camCaps.zoom;
+  if(z){const zs=$('zoomSlider');zs.min=z.min;zs.max=z.max;zs.step=z.step||((z.max-z.min)/20||.1);
+    zs.value=(camTrack.getSettings&&camTrack.getSettings().zoom)||z.min;$('zoomWrap').hidden=false;}
+  else $('zoomWrap').hidden=true;
   $('camHint').hidden=!(camCaps.pointsOfInterest||camCaps.focusMode);
-  log('camera: '+(camCaps.focusMode?('focus['+camCaps.focusMode.join('/')+'] '):'no focus ctl ')
-      +(camCaps.torch?'torch ':'')+(ec?'exposure':''),'sy');}
-function videoBox(){const v=$('qrVideo');if(!v.videoWidth)return null;
-  const r=v.getBoundingClientRect(),sc=Math.max(r.width/v.videoWidth,r.height/v.videoHeight);
-  return {v,r,sc,ox:r.left+(r.width-v.videoWidth*sc)/2,oy:r.top+(r.height-v.videoHeight*sc)/2};}
+  const st=camTrack.getSettings?camTrack.getSettings():{};
+  log('camera '+(st.width||'?')+'x'+(st.height||'?')+': '+(camCaps.focusMode?('focus['+camCaps.focusMode.join('/')+'] '):'no focus ctl ')
+      +(camCaps.torch?'torch ':'')+(ec?'exposure ':'')+(camCaps.zoom?'zoom':''),'sy');}
+function frameSource(){const d=$('qrDemo'),v=$('qrVideo');
+  if(!d.hidden&&d.naturalWidth)return{el:d,w:d.naturalWidth,h:d.naturalHeight};   // still image (demo / tests)
+  if(v.videoWidth)return{el:v,w:v.videoWidth,h:v.videoHeight};
+  return null;}
+function videoBox(){const s=frameSource();if(!s)return null;
+  const r=s.el.getBoundingClientRect(),sc=Math.max(r.width/s.w,r.height/s.h);
+  return {el:s.el,v:{videoWidth:s.w,videoHeight:s.h},r,sc,
+          ox:r.left+(r.width-s.w*sc)/2,oy:r.top+(r.height-s.h*sc)/2};}
 async function focusAt(cx,cy){
   const ring=$('focusRing'),sr=$('s-scan').getBoundingClientRect();
   ring.hidden=true;void ring.offsetWidth;                      // restart the pop animation
@@ -802,13 +822,24 @@ async function focusAt(cx,cy){
   focusAt.back=setTimeout(()=>{if(camTrack&&camCaps.focusMode&&camCaps.focusMode.includes('continuous'))
     camTrack.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});},4000);}
 /* decode only the viewfinder area: a bright background can no longer wash out the code */
-function cropRect(v){const b=videoBox();if(!b)return null;
-  const f=$('qrMask').getBoundingClientRect(),pad=.12;
+function cropRect(){const b=videoBox();if(!b)return null;
+  const f=$('qrMask').getBoundingClientRect(),pad=.12,W=b.v.videoWidth,H=b.v.videoHeight;
   let sx=(f.left-b.ox)/b.sc,sy=(f.top-b.oy)/b.sc,sw=f.width/b.sc,sh=f.height/b.sc;
   sx-=sw*pad;sy-=sh*pad;sw*=1+2*pad;sh*=1+2*pad;
   sx=Math.max(0,sx);sy=Math.max(0,sy);
-  sw=Math.min(sw,v.videoWidth-sx);sh=Math.min(sh,v.videoHeight-sy);
+  sw=Math.min(sw,W-sx);sh=Math.min(sh,H-sy);
   return sw>16&&sh>16?{sx,sy,sw,sh}:null;}
+async function decodeRegion(src,r){
+  const c=$('qrCanvas'),w=Math.min(720,Math.max(1,Math.round(r.sw)));
+  c.width=w;c.height=Math.max(1,Math.round(w*r.sh/r.sw));
+  const ctx=c.getContext('2d',{willReadFrequently:true});
+  ctx.drawImage(src,r.sx,r.sy,r.sw,r.sh,0,0,c.width,c.height);
+  if(qrDet){try{const codes=await qrDet.detect(c);if(codes.length)return codes[0].rawValue;}catch(_){}}
+  if(window.jsQR){const img=ctx.getImageData(0,0,c.width,c.height);
+    let q=jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
+    if(!q&&boostContrast(img.data))q=jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
+    if(q)return q.data;}
+  return null;}
 function boostContrast(d){                                      // stretch luma: rescues glare / over-exposed frames
   let lo=255,hi=0;
   for(let i=0;i<d.length;i+=28){const y=(d[i]*299+d[i+1]*587+d[i+2]*114)/1000;if(y<lo)lo=y;if(y>hi)hi=y;}  // stride 7px: never aliases onto the QR grid
@@ -817,22 +848,24 @@ function boostContrast(d){                                      // stretch luma:
   for(let i=0;i<d.length;i+=4){const y=(d[i]*299+d[i+1]*587+d[i+2]*114)/1000;
     const n=y<=lo?0:y>=hi?255:(y-lo)*a;d[i]=d[i+1]=d[i+2]=n;}
   return true;}
-async function scanLoop(){if(!scanStream)return;const v=$('qrVideo'),c=$('qrCanvas');
-  if(v.videoWidth){
-    const r=cropRect(v)||{sx:0,sy:0,sw:v.videoWidth,sh:v.videoHeight};
-    const w=Math.min(720,Math.round(r.sw));
-    c.width=w;c.height=Math.max(1,Math.round(w*r.sh/r.sw));
-    const ctx=c.getContext('2d',{willReadFrequently:true});
-    ctx.drawImage(v,r.sx,r.sy,r.sw,r.sh,0,0,c.width,c.height);
-    let text=null;
-    if(qrDet){try{const codes=await qrDet.detect(c);if(codes.length)text=codes[0].rawValue;}catch(_){}}
-    if(!text&&window.jsQR){const img=ctx.getImageData(0,0,c.width,c.height);
-      let q=jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
-      if(!q&&boostContrast(img.data))q=jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
-      if(q)text=q.data;}
+let scanTick=0,scanT0=0;
+async function scanLoop(){if(!scanStream&&$('qrDemo').hidden)return;   // also decodes a still frame (demo / diagnostics)
+  const b=videoBox();
+  if(b){
+    const full={sx:0,sy:0,sw:b.v.videoWidth,sh:b.v.videoHeight};
+    const crop=cropRect()||full;
+    let text=await decodeRegion(b.el,crop);
+    if(!text&&scanTick%2===0)text=await decodeRegion(b.el,full);   // whole frame too: never miss a code the crop math cut off
+    scanTick++;
+    if(scanTick%8===1)scanDiag(b);
     if(text){onQR(text);return;}}
   scanRAF=requestAnimationFrame(scanLoop);}
+function scanDiag(b){
+  const secs=scanT0?Math.round((Date.now()-scanT0)/1000):0;
+  $('scanDiag').textContent=b?(b.v.videoWidth+'\u00d7'+b.v.videoHeight+'  \u00b7  '+(qrDet?'BarcodeDetector':'jsQR')+'  \u00b7  '+scanTick+' frames  \u00b7  '+secs+'s'):'';
+  if(secs>=8)$('btnScanManual').hidden=false;}
 function stopScan(){if(scanRAF)cancelAnimationFrame(scanRAF);scanRAF=null;
+  $('btnScanManual').hidden=true;$('scanDiag').textContent='';scanT0=0;
   clearTimeout(focusAt.back);clearTimeout(focusAt.hide);$('focusRing').hidden=true;
   if(camTrack&&torchOn){try{camTrack.applyConstraints({advanced:[{torch:false}]});}catch(_){}}
   torchOn=false;$('btnTorch').classList.remove('on');camTrack=null;camCaps={};
@@ -954,11 +987,14 @@ $('btnScanQR').onclick=gotoScan;
 $('s-scan').addEventListener('pointerdown',e=>{           // tap anywhere on the preview to focus + re-meter
   if(e.target.closest('button')||e.target.closest('.qr-invalid')||e.target.closest('.exp'))return;
   focusAt(e.clientX,e.clientY);});
+$('btnScanManual').onclick=()=>{stopScan();connectCard('ready');};
 $('btnTorch').onclick=async()=>{if(!camTrack)return;const want=!torchOn;
   try{await camTrack.applyConstraints({advanced:[{torch:want}]});torchOn=want;$('btnTorch').classList.toggle('on',want);}
   catch(e){log('torch failed: '+e.message,'er');toast('Flashlight not available');}};
 $('expSlider').oninput=e=>{if(!camTrack)return;
   camTrack.applyConstraints({advanced:[{exposureCompensation:+e.target.value}]}).catch(()=>{});};
+$('zoomSlider').oninput=e=>{if(!camTrack)return;
+  camTrack.applyConstraints({advanced:[{zoom:+e.target.value}]}).catch(()=>{});};
 $('btnSkipQR').onclick=()=>connectCard('ready');
 $('btnScanBack').onclick=()=>{stopScan();back();};
 $('btnStartWifi').onclick=()=>{go('s-wifi');setTimeout(scan,300);};
