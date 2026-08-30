@@ -1,538 +1,1042 @@
 <!doctype html>
-<html lang="vi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Tofu BLE Test</title>
+<meta name="theme-color" content="#fc6828">
+<title>Tofu</title>
 <!--
-  TOFU BLE TEST APP (Web Bluetooth) - test harness provisioning WiFi qua BLE.
-  Chay: Chrome/Edge (desktop hoac Android). KHONG iOS Safari. file:// hoac localhost.
+  TOFU BLE TEST APP (Web Bluetooth) - UI theo Figma "TOFU / Revamp UI" (Scan QR Code, Tofu selection, Home, Feed).
+  Chay: Chrome/Edge (desktop hoac Android). iOS: Bluefy. file:// hoac localhost.
 
   LUONG:
-    Man dau = DANH SACH TOFU (localStorage nho may da pair).
-      - Chua co Tofu  -> "Them Tofu moi"  -> connect (picker) -> WiFi -> config
-                         -> hien MA KICH HOAT 6 so -> (user activate tay tren server)
-                         -> device bao "ACTIVATED" -> vao Home.
-      - Da co Tofu    -> bam "Reconnect" -> connect -> vao Home.
+    Chua co Tofu  -> Wake Tofu up -> Scan QR -> Connect (picker) -> Getting started -> Select Wi-Fi
+                     -> Wi-Fi info (password) -> Tofu is setting up (activation code) -> Tofu Is Ready -> Home
+    Da co Tofu    -> Home + sheet "Your Tofu" -> Device connection -> RECONNECT -> Home
 
-  GIAO THUC BLE (rut tu firmware ble_manager):
-    Service 0x18F0
-    Cred 0xA002 WRITE (kenh lenh, chuoi ASCII):
-       "SCAN" -> quet ; "<ssid>/<pass>" -> noi wifi ; "STATUS" -> day JSON status
-    Scan 0xA001 NOTIFY: moi AP 1 JSON {"ssid","rssi","channel","auth"}
-    Status 0xA005 NOTIFY: "WIFI_SCAN_OK" / "WIFI_OK" / "WIFI_FAIL" / "WIFI_DISCONNECT"
-       + (CAN THEM HOOK FIRMWARE): "ACTIVATION_CODE:189790" / "ACTIVATED"
-    TofuStatus 0x1006 NOTIFY/READ: JSON {name,hunger,thirst,battery,temp,birth,wifiSignal,wifiSSID}
-    Hunger/Thirst/Battery 0x1001/2/3 READ/NOTIFY. Feed 0x1004 / Drink 0x1005 WRITE.
+  GIAO THUC BLE (xem TOFU_BLE_SPEC.md): Service 0x18F0; Cred 0xA002 WRITE ("SCAN" | "<ssid>/<pass>" | "STATUS");
+    Scan 0xA001 NOTIFY (JSON/AP); Status 0xA005 NOTIFY (WIFI_SCAN_OK/WIFI_OK/WIFI_FAIL/WIFI_DISCONNECT/ACTIVATION_CODE:######/ACTIVATED);
+    TofuStatus 0x1006 NOTIFY/READ (JSON); Hunger/Thirst/Battery 0x1001/2/3 READ/NOTIFY; Feed 0x1004 / Drink 0x1005 WRITE.
+
+  DEMO (chup man hinh / so voi Figma, khong can BLE):  tofu-ble.html?demo=home&frame=1
+    demo = wake | scan | scanfail | connect.ready | connect.connecting | connect.success | connect.fail | start
+         | wifi.searching | wifi.list | wifi.connecting | wifi.success | wifi.notfound | wifi.pw
+         | setup | setup.code | ready | home | home.list | home.device | home.unpair | home.wifi | home.notfound | home.log
+         | feed | feed.adjust | feed.toast
+    frame=1 -> them 44px status bar + 34px home indicator (khop khung 375x812 cua Figma)
 -->
+<link rel="stylesheet" href="assets/fonts/kanit-local.css">
+<script>
+/* illustrated icon fallback -> emoji (runs before images load) */
+function imgFallback(t){if(!t||t.tagName!=='IMG'||!t.dataset.emoji||t.dataset.fb)return;t.dataset.fb=1;const s=document.createElement('span');s.className='emoji';s.textContent=t.dataset.emoji;const sz=t.clientWidth||+t.getAttribute('width')||24;s.style.width=s.style.height=sz+'px';s.style.fontSize=Math.round(sz*.72)+'px';t.replaceWith(s);}
+document.addEventListener('error',e=>imgFallback(e.target),true);
+window.addEventListener('load',()=>document.querySelectorAll('img[data-emoji]').forEach(i=>{if(i.complete&&!i.naturalWidth)imgFallback(i);}));
+</script>
 <style>
-  :root{
-    --brand:#E8531A; --brand-d:#C63C0C; --header:#8E1B0B; --cream:#FFF3EC;
-    --ink:#231a16; --muted:#8a7b73; --line:#efe1d8; --card:#ffffff; --bg:#f3ede9;
-    --ok:#2f9e5f; --bad:#d0443a; --warn:#d9902a;
-    --tofu-a:#2a2d35; --tofu-b:#0f1115;
-    --shadow:0 1px 2px rgba(60,30,15,.06),0 12px 30px -14px rgba(60,30,15,.28);
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-    font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;line-height:1.5}
-  .app{max-width:440px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column}
+:root{
+  --p500:#fa5115;--p400:#fc6828;--p300:#fea573;--p200:#ffcaa9;--p100:#ffe7d5;--p50:#fff4ed;--p600:#eb370b;--o:#ff7120;
+  --w:#fffcfa;--n100:#f2f0ed;--n200:#d9d5d2;--n300:#bab7b4;--n400:#858281;--n500:#5f5d5c;--k:#1a1a1a;--ink:#10192d;--t2:#090300;
+  --g:#4bbe7f;--r:#cd2424;--ov:rgba(47,43,61,.5);
+  --sat:env(safe-area-inset-top,0px);--sab:max(env(safe-area-inset-bottom,0px),16px);
+}
+html.frame{--sat:44px;--sab:34px}
+html.frame .app{width:375px;max-width:375px;margin:0}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:#e9e6e3;font-family:Kanit,"Segoe UI",system-ui,sans-serif;color:var(--k);line-height:1.5;-webkit-font-smoothing:antialiased;overflow:hidden}
+.app{position:relative;width:100%;max-width:430px;height:100dvh;margin:0 auto;overflow:hidden;background:#fffcf9}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;overflow:hidden}
+.screen.on{display:flex}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent;text-align:inherit}
+img{display:block;max-width:100%}
+input{font:inherit;color:inherit;background:none;border:0;outline:none;width:100%}
+[hidden]{display:none!important}
+.ic{display:inline-block;width:24px;height:24px;flex:none}
+.s12{width:12px;height:12px}.s16{width:16px;height:16px}.s20{width:20px;height:20px}.s32{width:32px;height:32px}
+.spin{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.emoji{display:inline-grid;place-items:center;line-height:1;flex:none}
 
-  header{background:var(--header);color:#fff;padding:14px 18px;display:flex;align-items:center;gap:12px;
-    position:sticky;top:0;z-index:5}
-  header .back{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:0 4px;display:none}
-  header .logo{width:32px;height:32px;flex:0 0 auto}
-  header h1{font-size:17px;font-weight:700;margin:0}
-  header .conn{margin-left:auto;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px}
-  .cdot{width:9px;height:9px;border-radius:50%;background:#e6b3a6}
-  .cdot.on{background:#7ee0a0;box-shadow:0 0 8px #7ee0a0}
+/* fake iOS status bar (frame mode only) */
+.sb{display:none;position:absolute;top:0;left:0;right:0;height:44px;z-index:90;padding:14px 21px 0;font-weight:600;font-size:14px;line-height:17px;color:var(--ink);letter-spacing:-.28px;pointer-events:none}
+html.frame .sb{display:flex;justify-content:space-between;align-items:flex-start}
+.sb.light{color:#fff}
+.sb i{display:flex;gap:5px;align-items:center;margin-top:2px}
+.sb i b{display:block;width:17px;height:11px;background:currentColor;border-radius:1px;-webkit-mask:linear-gradient(90deg,#000 0 3px,transparent 3px 4.5px,#000 4.5px 7.5px,transparent 7.5px 9px,#000 9px 12px,transparent 12px 13.5px,#000 13.5px);mask:linear-gradient(90deg,#000 0 3px,transparent 3px 4.5px,#000 4.5px 7.5px,transparent 7.5px 9px,#000 9px 12px,transparent 12px 13.5px,#000 13.5px)}
+.sb i em{display:block;width:24px;height:11px;border:1px solid currentColor;border-radius:3px;position:relative;opacity:.9}
+.sb i em:after{content:"";position:absolute;inset:1px;background:currentColor;border-radius:1.5px}
 
-  main{flex:1;padding:18px;display:flex;flex-direction:column;gap:16px}
-  .view{display:none;flex-direction:column;gap:16px}
-  .view.active{display:flex}
+/* shapes */
+.shp{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+[data-shape]{position:relative}
+[data-shape]>*:not(.shp){position:relative;z-index:1}
 
-  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow)}
-  .card h2{margin:0 0 4px;font-size:16px;font-weight:700}
-  .card p.sub{margin:0 0 14px;color:var(--muted);font-size:13.5px}
-  .tofu-wrap{display:flex;justify-content:center;padding:8px 0 2px}
-  .tofu-wrap svg{filter:drop-shadow(0 16px 18px rgba(0,0,0,.22))}
+/* buttons */
+.btn{position:relative;height:48px;flex:1;display:flex;align-items:center;justify-content:center;gap:12px;padding:12px 30px;font-weight:600;font-size:16px;line-height:24px;text-transform:uppercase;letter-spacing:0;color:var(--w);--f:var(--p400);--s:var(--k)}
+.btn .shp path{fill:var(--f);stroke:var(--s);stroke-width:2}
+.btn.sec{color:var(--k);--f:var(--n300)}
+.btn:disabled{cursor:default}
+.btn.pri:disabled{color:var(--p300);--f:var(--p100);--s:var(--p300)}
+.btn.sec:disabled{color:var(--k);--f:var(--n300);--s:var(--k)}
+.btn:active:not(:disabled){filter:brightness(.95)}
+.actions{display:flex;gap:12px}
+.ghost{display:block;margin:0 auto;font-size:12px;line-height:18px;color:var(--n400);text-decoration:underline;text-underline-offset:2px}
 
-  button{font:inherit;cursor:pointer;border:none;border-radius:12px;font-weight:700}
-  .btn{background:var(--brand);color:#fff;padding:13px 18px;width:100%;font-size:15px;
-    box-shadow:0 6px 16px -6px rgba(232,83,26,.7);transition:filter .15s,transform .05s}
-  .btn:hover{filter:brightness(1.05)} .btn:active{transform:translateY(1px)}
-  .btn:disabled{background:#e7d9d0;color:#b3a49b;box-shadow:none;cursor:not-allowed}
-  .btn.sec{background:#f4e7df;color:var(--brand-d);box-shadow:none}
-  .btn.ghost{background:transparent;color:var(--muted);box-shadow:none}
-  .row{display:flex;gap:10px}.row .btn{flex:1}
+/* ---------- onboarding "stage" screens ---------- */
+.stage{background:#fffcf9}
+.grid{position:absolute;inset:0;pointer-events:none;z-index:0}
+.grid i{position:absolute;top:0;bottom:calc(var(--sab) + 67px);width:1px;background:var(--n100)}
+.grid i:nth-child(1){left:25%}.grid i:nth-child(2){left:50%}.grid i:nth-child(3){left:75%}
+.globe{position:absolute;left:13px;top:calc(var(--sat) + 38px);width:78px;height:78px;pointer-events:none}
+.globe *{fill:none;stroke:var(--n100);stroke-width:2}
+.wm{position:absolute;left:44px;top:calc(var(--sat) + 95px);height:498px;font-weight:800;font-size:500px;line-height:498px;white-space:nowrap;color:var(--n100);opacity:.5;user-select:none;pointer-events:none;letter-spacing:-.02em}
+.stage-body{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;padding:calc(var(--sat) + 40px) 12px calc(var(--sab) + 6px);gap:32px;overflow:hidden}
+.stage-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px;min-height:0}
+.device{width:220px;height:220px;object-fit:contain;padding:10px;flex:none}
+.stage-text{text-align:center;display:flex;flex-direction:column;gap:4px;padding:0 12px}
+.stage-text h1{font-weight:500;font-size:32px;line-height:40px;color:var(--k)}
+.stage-text p{font-weight:300;font-size:14px;line-height:20px;color:var(--n500)}
+.stage-text ul{list-style:none;font-weight:300;font-size:14px;line-height:20px;color:var(--n500);text-align:center}
+.stage-text ul li:before{content:"•  "}
+.stage-foot{display:flex;flex-direction:column;gap:12px}
 
-  /* tofu list */
-  .tofu-row{display:flex;align-items:center;gap:13px;padding:13px 14px;border:1px solid var(--line);
-    border-radius:14px;background:#fff;cursor:pointer;transition:border-color .12s}
-  .tofu-row:hover{border-color:var(--brand)}
-  .tofu-row .av{width:40px;height:40px;flex:0 0 auto}
-  .tofu-row .nm{font-weight:700;font-size:15px;flex:1}
-  .tofu-row .st{font-size:12px;color:var(--muted)}
-  .tofu-row .chev{color:var(--muted);font-size:18px}
-  .tofu-row .rowmain{cursor:pointer}
-  .tofu-row .forget{background:none;border:none;color:var(--muted);font-size:15px;padding:6px 9px;cursor:pointer;border-radius:8px}
-  .tofu-row .forget:hover{background:#fbe9e7;color:var(--bad)}
-  .listwrap{display:flex;flex-direction:column;gap:9px}
+/* callout card (Connecting / Setup) */
+.callout{position:relative;width:334px;max-width:100%;padding:4px 3px 4px 4px}
+.brk{position:absolute;width:80px;height:64px;background:var(--o);border-radius:2px}
+.brk.tr{top:0;right:0}.brk.bl{bottom:0;left:0}
+.callout-box{position:relative;background:#fff}
+.callout-box .shp path{fill:#fff;stroke:var(--k);stroke-width:1}
+.callout-text{min-height:126px;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:12px 12px 0;text-align:center}
+.callout-text h2{font-weight:500;font-size:32px;line-height:40px;color:var(--k)}
+.callout-text p{font-weight:300;font-size:14px;line-height:20px;color:var(--n500)}
+.callout-foot{height:44px;border-top:1px solid var(--n100);display:flex;align-items:center;justify-content:center;gap:4px;padding:12px;font-size:14px;line-height:20px;color:var(--p400)}
+.callout-foot.ok{color:var(--g)}.callout-foot.bad{color:var(--r)}
+.chk{display:flex;flex-direction:column;gap:8px;padding:0 24px 40px}
+.chk div{display:flex;align-items:center;gap:6px;font-size:14px;line-height:20px;color:var(--n300)}
+.chk div.ok{color:var(--g)}
+.code{margin:0 24px 16px;padding:10px 12px;background:var(--p50);border:1px dashed var(--p300);border-radius:4px;text-align:center}
+.code small{display:block;font-size:11px;line-height:16px;letter-spacing:.08em;text-transform:uppercase;color:var(--n500)}
+.code b{display:block;font-weight:600;font-size:32px;line-height:40px;letter-spacing:.18em;color:var(--p500);font-variant-numeric:tabular-nums}
+.code span{display:block;font-size:12px;line-height:16px;color:var(--n500)}
 
-  /* qr scan */
-  .qrbox{position:relative;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:1/1;display:grid;place-items:center;margin-top:6px}
-  .qrbox video{width:100%;height:100%;object-fit:cover}
-  .qrframe{position:absolute;inset:16%;border:3px solid #fff;border-radius:14px;box-shadow:0 0 0 100vmax rgba(0,0,0,.30);pointer-events:none}
-  .qrmac{font-family:ui-monospace,"Cascadia Code",monospace;font-size:15px;margin:8px 0 2px;word-break:break-all}
+/* ---------- scan ---------- */
+.scan{background:#10192d}
+.scan video,.scan .qr-demo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.focus-ring{position:absolute;width:74px;height:74px;margin:-37px 0 0 -37px;border:2px solid #fff;border-radius:50%;z-index:3;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,.35),inset 0 0 0 1px rgba(0,0,0,.25);animation:focuspop .55s ease-out forwards}
+.focus-ring:after{content:"";position:absolute;inset:32px;border:1px solid rgba(255,255,255,.9);border-radius:50%}
+@keyframes focuspop{0%{transform:scale(1.45);opacity:0}25%{opacity:1}100%{transform:scale(1);opacity:.9}}
+.cam-hint{position:absolute;left:0;right:0;top:calc(var(--sat) + 520px);text-align:center;font-size:13px;line-height:20px;color:rgba(255,255,255,.82);z-index:2;pointer-events:none}
+.cam-ctl{position:absolute;left:24px;right:24px;bottom:calc(var(--sab) + 28px);z-index:2;display:flex;flex-direction:column;align-items:center;gap:16px}
+.cam-btn{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.22);color:#fff;display:grid;place-items:center;backdrop-filter:blur(4px)}
+.cam-btn.on{background:#fff;color:var(--k)}
+.exp{display:flex;align-items:center;gap:12px;width:100%;max-width:250px;color:#fff}
+.exp b{font-weight:400;font-size:12px;opacity:.8}
+.exp input{-webkit-appearance:none;appearance:none;flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.45);outline:none}
+.exp input::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.exp input::-moz-range-thumb{width:18px;height:18px;border:0;border-radius:50%;background:#fff}
+.qr-mask{position:absolute;left:50%;top:calc(var(--sat) + 167.5px);width:268px;height:334px;margin-left:-134px;border-radius:16px;box-shadow:0 0 0 200vmax rgba(9,3,0,.8);pointer-events:none}
+.qr-frame{position:absolute;left:50%;top:calc(var(--sat) + 166px);width:274px;height:340px;margin-left:-137px;pointer-events:none}
+.scan-title{position:absolute;left:0;right:0;top:calc(var(--sat) + 88px);text-align:center;font-weight:500;font-size:24px;line-height:29px;color:#fff}
+.appbar{position:relative;z-index:2;margin-top:var(--sat);height:56px;padding:4px 16px;display:flex;align-items:center;gap:4px;flex:none}
+.back{width:48px;height:48px;background:#fff;display:grid;place-items:center;flex:none;color:var(--k);clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
+.appbar.dark .back{background:rgba(255,255,255,.24);color:#fff;border-radius:16px;margin-left:8px;clip-path:none}
+.appbar h1{flex:1;text-align:center;font-weight:500;font-size:20px;line-height:26px;color:var(--k)}
+.appbar .shop{width:30px;height:30px;flex:none}
+.qr-invalid{position:absolute;left:0;right:0;bottom:0;height:calc(var(--sab) + 196px);background:#fff;border-radius:20px 20px 0 0;padding:12px 25px 0;text-align:center;z-index:3}
+.handle{display:block;width:48px;height:6px;border-radius:24px;background:#ececec;margin:0 auto}
+.qr-invalid .ring{width:54px;height:54px;border-radius:50%;background:var(--o);display:grid;place-items:center;margin:22px auto 16px;color:#fff}
+.qr-invalid h2{font-weight:500;font-size:20px;line-height:26px;color:var(--t2)}
+.qr-invalid p{font-weight:300;font-size:16px;line-height:24px;color:#777e90;margin-top:8px}
 
-  /* wifi list */
-  .wifi{display:flex;flex-direction:column;gap:8px;margin-top:6px}
-  .ap{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);
-    border-radius:12px;background:#fff;cursor:pointer;transition:border-color .12s,background .12s}
-  .ap:hover{border-color:var(--brand);background:#fff8f4}
-  .ap .nm{font-weight:600;font-size:14.5px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .ap .meta{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
-  .bars{display:inline-flex;align-items:flex-end;gap:2px;height:15px}
-  .bars i{width:3px;border-radius:1px;display:block;background:var(--muted)}
-  .empty{color:var(--muted);font-size:13.5px;text-align:center;padding:22px 0}
+/* ---------- wifi (orange + white card) ---------- */
+.wifi{background:var(--p400)}
+.wcard{position:absolute;left:12px;right:12px;top:calc(var(--sat) + 20px);bottom:0}
+.wcard .shp path{fill:#fff}
+.wbody{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;padding:40px 24px calc(var(--sab) + 6px);gap:32px;overflow-y:auto}
+.wbody h1{font-weight:500;font-size:24px;line-height:29px;color:var(--t2);text-align:center;flex:none}
+.wsearch{display:flex;align-items:center;gap:4px;font-size:16px;line-height:24px;color:var(--n500)}
+.wsel{display:flex;align-items:center;gap:12px;height:48px;padding:12px 0;font-size:16px;line-height:24px;color:var(--k)}
+.wsel .txt{flex:1;display:flex;align-items:center;gap:4px}
+.wlabel{font-size:16px;line-height:24px;color:var(--n500);margin-bottom:8px}
+.wrows{display:flex;flex-direction:column;gap:24px}
+.wrow{display:flex;align-items:center;gap:12px;padding-left:16px;height:24px;font-size:16px;line-height:24px;color:var(--ink);width:100%}
+.wrow .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wrow .st{display:flex;align-items:center;gap:4px;color:#1e1e1e}
+.wlist.dim .wrow{color:var(--n300)}.wlist.dim .wrow .st{color:var(--n300)}
+.wrow.hint{color:var(--n500);padding-left:0}
+.spacer{flex:1}
 
-  .pill{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;font-size:12.5px;font-weight:700}
-  .pill.ok{background:#e6f6ec;color:var(--ok)} .pill.bad{background:#fbe9e7;color:var(--bad)}
-  .pill.wait{background:#fdf1e0;color:var(--warn)} .pill.idle{background:#eee7e2;color:var(--muted)}
+/* overlay + modal */
+.overlay{position:absolute;inset:0;background:var(--ov);z-index:20;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{width:100%;max-width:343px;background:var(--w)}
+.modal-h{position:relative;padding:24px;display:flex;flex-direction:column;gap:4px;text-align:center}
+.modal-h .x{position:absolute;top:24px;right:24px;width:24px;height:24px;color:var(--k)}
+.modal-h h2{font-weight:500;font-size:24px;line-height:29px;color:var(--t2);margin-top:28px}
+.modal-h p{font-weight:300;font-size:14px;line-height:20px;color:#646464}
+.modal-c{padding:0 24px 24px;display:flex;flex-direction:column;gap:12px}
+#wifiModal .modal-h{padding-bottom:34px}
+#wifiModal .btn{height:50px}
+.modal-c .what{font-size:14px;line-height:20px;color:var(--n500)}
+.modal-c ul{padding-left:18px;font-weight:300;font-size:14px;line-height:20px;color:var(--n500)}
 
-  /* stats */
-  /* Home theo Figma */
-  .tofu-badge{background:linear-gradient(135deg,#F5701E,#E8531A);border-radius:20px;padding:18px 0 12px;
-    display:flex;flex-direction:column;align-items:center;position:relative;overflow:hidden}
-  .tofu-badge::before{content:"";position:absolute;top:-35%;right:-12%;width:65%;height:90%;background:rgba(255,255,255,.10);transform:rotate(24deg)}
-  .tofu-badge svg{filter:drop-shadow(0 12px 14px rgba(0,0,0,.30))}
-  .mood{color:#fff;font-size:11.5px;font-weight:700;opacity:.95;margin-top:8px;letter-spacing:.4px;text-transform:uppercase}
-  .gauge{display:flex;gap:3px;height:14px}
-  .gauge i{flex:1;border-radius:3px;background:#eadfd8;display:block;transition:background .3s}
-  .lvline{display:flex;align-items:center;gap:8px;margin:2px 0 5px}
-  .lvline .star{font-size:17px}
-  .lvline .lvname{font-weight:800;font-size:16px}
-  .lvline .xp{margin-left:auto;font-size:11px;color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums}
-  .nameline{display:flex;align-items:center;gap:8px;margin:4px 0 12px}
-  .nameline .nm{font-weight:800;font-size:15px}
-  .nameline .beans{margin-left:auto;font-size:12px;color:var(--brand-d);font-weight:800}
-  .stat{display:flex;align-items:center;gap:10px;margin:11px 0}
-  .stat .ic{width:24px;text-align:center;font-size:17px;flex:0 0 auto}
-  .stat .lb{width:66px;font-size:13px;font-weight:700}
-  .stat .gauge{flex:1}
-  .stat .val{width:40px;text-align:right;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
-  .qtyrow{display:flex;align-items:center;gap:10px;margin:14px 0 0}
-  .qtyrow .qtylb{font-size:13px;font-weight:700;flex:1}
-  .qtybtn{width:36px;height:36px;border-radius:11px;background:#f4e7df;color:var(--brand-d);font-size:22px;font-weight:800;border:none;cursor:pointer;line-height:1}
-  .qtybtn:active{transform:translateY(1px)}
-  .qtyval{min-width:28px;text-align:center;font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+/* bottom sheets */
+.sheet-ov{position:absolute;inset:0;background:var(--ov);z-index:30;display:flex;align-items:flex-end}
+.sheet{position:relative;width:100%;max-height:100%;background:#fff;padding:8px 16px calc(var(--sab) + 12px);display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+.sheet.r4{border-radius:4px 4px 0 0}
+.sh-title{font-weight:500;font-size:20px;line-height:26px;color:#23262f;text-align:center;margin:8px 0 8px}
+.sh-sub{font-size:16px;line-height:24px;color:var(--n500)}
+.sh-actions{display:flex;gap:12px;padding-top:12px}
+.trows{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow-y:auto}
+#shList .sheet{height:63.5%}
+#shDevice .sheet{min-height:41.8%;justify-content:space-between}
+#shNotFound .sheet{padding-left:24px;padding-right:24px}
+.trow{display:flex;align-items:center;gap:8px;height:89px;padding:8px 12px;border-radius:8px;width:100%}
+.trow.sel{background:#f4f4f4}
+.thumb{width:90px;height:73px;object-fit:contain;flex:none}
+.tinfo{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0}
+.tinfo b{font-weight:500;font-size:20px;line-height:26px;color:var(--k);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stt{display:flex;align-items:center;gap:4px;font-size:14px;line-height:20px;color:var(--n300)}
+.stt i{width:12px;height:12px;border-radius:4px;background:var(--n300);border:1px solid var(--w)}
+.stt.on{color:var(--g)}.stt.on i{background:var(--g)}
+.trow .chev{color:var(--k)}
+.dev-hero{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 0 4px}
+.dev-hero img{width:124px;height:100px;object-fit:contain}
+.dev-hero b{font-weight:500;font-size:24px;line-height:29px}
+.inputs{display:flex;flex-direction:column;gap:16px;padding-top:8px}
+.input{height:56px;border:1px solid var(--n300);border-radius:4px;display:flex;align-items:center;gap:8px;padding:0 16px;font-size:14px;line-height:20px;color:var(--k)}
+.input input::placeholder{color:var(--n300);font-size:14px;letter-spacing:0}
+.input input[type=password]{font-size:26px;line-height:1;letter-spacing:6px;color:var(--ink)}
+.input .eye{width:24px;height:24px;color:var(--k);flex:none}
+.nf-box{position:relative;height:138px;border-radius:4px;background:#b6b2b2;overflow:hidden;display:grid;place-items:center;margin-top:8px}
+.nf-box img{width:159px;height:129px;object-fit:contain}
+.nf-box:after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.6)}
+.nf-box span{position:absolute;font-weight:300;font-size:20px;line-height:26px;color:#fff;z-index:1}
+.nf-p{font-size:16px;line-height:24px;color:var(--t2);margin-top:8px}
+.nf-ol{list-style:none;display:flex;flex-direction:column;gap:12px;margin-top:4px}
+.nf-ol li{display:flex;gap:12px;font-weight:300;font-size:14px;line-height:20px;color:var(--t2)}
+.nf-ol li i{flex:none;width:24px;height:24px;border-radius:2px;background:var(--p400);color:#fff;font-style:normal;font-weight:600;font-size:12px;display:grid;place-items:center}
+.banner{width:100%;height:138px;object-fit:contain;margin-top:4px}
+.logbox{font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:15px;background:var(--n100);border-radius:4px;padding:8px;max-height:36vh;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--k)}
+.logbox .tx{color:#0e58ba}.logbox .rx{color:#125335}.logbox .er{color:var(--r)}.logbox .sy{color:var(--n500)}
 
-  /* activation code */
-  .codebig{font-size:46px;font-weight:800;letter-spacing:10px;color:var(--brand-d);font-variant-numeric:tabular-nums}
+/* ---------- home ---------- */
+.home{background:linear-gradient(180deg,#fffcfa 0%,#fff 100%)}
+.home .grid i{top:calc(var(--sat) + 18px);bottom:calc(var(--sab) + 49px)}
+.home-hdr{position:absolute;top:0;left:0;width:100%;height:calc(var(--sat) + 257px);z-index:0;pointer-events:none}
+.home-hdr path{fill:var(--p400)}
+.topbar{position:absolute;top:calc(var(--sat) + 8px);left:0;right:0;height:24px;padding:0 16px;display:flex;justify-content:space-between;align-items:center;z-index:4}
+.tb-left{display:flex;align-items:center;gap:4px;height:24px}
+.avatar{width:24px;height:24px;border-radius:50%;background:#e8e8e8;overflow:hidden;display:grid;place-items:center;flex:none}
+.avatar img{width:19px;height:15px;object-fit:contain}
+.tb-left .nm{font-size:16px;line-height:19px;color:var(--ink);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb-left .ic{margin-left:4px;color:var(--k)}
+.tb-right{display:flex;gap:4px}
+.ib{width:24px;height:24px;display:grid;place-items:center;color:#000}
+.sidestate{position:absolute;right:0;top:calc(var(--sat) + 34px);width:45px;height:175px;z-index:3;display:block}
+.sidestate svg{width:45px;height:175px;display:block;overflow:visible}
+.sidestate .cell{fill:rgba(255,255,255,.16)}.sidestate .cell.on{fill:var(--g)}
+.sidestate.nowifi svg g[stroke]{stroke:var(--n300)}.sidestate.nowifi svg g[stroke] circle{fill:var(--n300)}
+.home-scroll{position:absolute;top:calc(var(--sat) + 113px);left:0;right:0;bottom:calc(var(--sab) + 107px);overflow-y:auto;z-index:2}
+.home-content{display:flex;flex-direction:column;gap:24px;padding:0 16px 12px}
+.mood{display:flex;flex-direction:column;align-items:center;gap:4px}
+.mood-t{font-size:16px;line-height:24px;color:var(--k)}
+.mascot{position:relative;flex:none}
+.mascot img{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}
+.mascot .eye{position:absolute;top:44.2%;width:11.3%;height:18.7%;background:#fff;border-radius:999px;transform-origin:center;animation:blink 4.2s infinite}
+.mascot .eye.l{left:35.2%}.mascot .eye.r{left:53.5%;animation-delay:.08s}
+@keyframes blink{0%,93%,100%{transform:scaleY(1)}96%{transform:scaleY(.12)}}
+.lvls{display:flex;flex-direction:column;gap:8px}
+.lvrow{display:flex;align-items:center;gap:10px;padding:7px 0 6px;min-height:57px}
+.tile{width:44px;height:44px;border-radius:8px;background:var(--tile);display:grid;place-items:center;flex:none}
+.tile img,.tile .emoji{width:36px;height:36px}
+.lvtxt{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0}
+.lvline{display:flex;justify-content:space-between;align-items:baseline;padding-right:12px}
+.lvline b{font-weight:500;font-size:20px;line-height:26px;white-space:nowrap}
+.lvline .xp{font-weight:500;font-size:14px;line-height:20px;white-space:nowrap}
+.lvbar{display:block;width:100%;height:20px;overflow:visible}
+.lvbar.line{margin-top:-8px}
+.stats{display:flex;flex-direction:column;gap:4px}
+.stat{height:57px;display:flex;align-items:center;justify-content:space-between;padding:10px}
+.stat .shp path{fill:var(--n200)}
+.stat-l{display:flex;align-items:center;gap:10px}
+.tile30{width:30px;height:30px;border:1px solid var(--k);border-radius:3px;background:var(--tile);display:grid;place-items:center;flex:none;overflow:hidden}
+.tile30 img,.tile30 .emoji{width:24px;height:24px}
+.stat b{font-weight:600;font-size:16px;line-height:24px}
+.stat-r{display:flex;align-items:center;gap:10px;width:137px}
+.gauge{width:100px;height:24px;background:var(--k);border-radius:4px;padding:2px;display:flex;gap:2px;flex:none}
+.gauge i{flex:1;border-radius:2px;background:var(--w)}
+.gauge i.on{background:var(--gc)}
+.stat-r b{width:27px}
+.home-bottom{position:absolute;left:0;right:0;bottom:0;height:calc(var(--sab) + 107px);z-index:5}
+.hb-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.lv1{position:absolute;left:16px;top:25px;font-weight:600;font-size:12px;line-height:18px;color:var(--k)}
+.feedbtn{position:absolute;right:7.5px;top:7px;width:85.5px;height:46.5px;display:grid;place-items:center;padding-left:28px}
+.feedbtn .shp path{fill:var(--o)}
+.feedbtn img,.feedbtn .emoji{width:32px;height:32px}
+.tabs{position:absolute;left:0;right:0;top:62px;height:54px;display:flex}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:14px;line-height:20px;color:#000}
+.tab img,.tab .emoji{width:30px;height:30px}
+.home-ind{display:none;position:absolute;left:50%;bottom:calc(var(--sab) - 22px);width:88px;height:4px;margin-left:-44px;background:#cdcdcd;border-radius:2px}
+html.frame .home-ind{display:block}
 
-  /* password sheet */
-  .modal{position:fixed;inset:0;background:rgba(20,10,6,.5);display:none;align-items:flex-end;justify-content:center;z-index:20}
-  .modal.show{display:flex}
-  .sheet{background:#fff;width:100%;max-width:440px;border-radius:20px 20px 0 0;padding:20px 20px 26px}
-  .sheet h3{margin:0 0 3px;font-size:16px}.sheet .ssid{color:var(--muted);font-size:13px;margin:0 0 14px}
-  .pwrow{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:2px 4px 2px 12px}
-  .pwrow input{flex:1;border:none;outline:none;font:inherit;padding:12px 0;background:transparent}
-  .pwrow .eye{background:none;color:var(--muted);padding:8px}.sheet .row{margin-top:16px}
-
-  .logwrap{margin-top:auto}
-  details{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  summary{padding:10px 14px;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer;list-style:none}
-  summary::-webkit-details-marker{display:none}
-  .log{font-family:ui-monospace,"Cascadia Code",monospace;font-size:11px;line-height:1.55;max-height:170px;overflow:auto;
-    padding:0 14px 12px;color:#4a3f39;white-space:pre-wrap;word-break:break-word}
-  .log .tx{color:#1462b3}.log .rx{color:#0a7d43}.log .er{color:#c0392b}.log .sy{color:#8a7b73}
-  .warnbar{background:#fdf1e0;color:#8a5a12;font-size:12.5px;padding:9px 14px;border-radius:10px;border:1px solid #f3ddb8;display:none}
-  .warnbar.show{display:block}
-  .connspin{font-size:42px;display:inline-block;line-height:1}
-  .connspin.spin{animation:spin 1s linear infinite}
-  @keyframes spin{to{transform:rotate(360deg)}}
+/* ---------- feed ---------- */
+.feed{background:#f1f1f1}
+.pills{display:flex;gap:16px;padding:4px 16px 0;flex:none}
+.pill{flex:1;height:30px;background:#fff;border-radius:3px;padding:4px 6px;display:flex;align-items:center;gap:4px;min-width:0}
+.pill img,.pill .emoji{width:20px;height:20px}
+.pill b{font-weight:600;font-size:12px;line-height:18px;color:#353945}
+.mgauge{width:47px;height:18px;background:var(--k);border-radius:4px;padding:2px;display:flex;gap:2px;flex:none}
+.mgauge i{flex:1;border-radius:2px;background:var(--w)}.mgauge i.on{background:var(--gc)}
+.pill span{margin-left:auto;font-size:14px;line-height:20px;color:var(--k)}
+.feed-stage{position:relative;flex:1}
+.mascot.big{position:absolute;left:50%;top:calc(var(--sat) + 193px - 134px);width:315px;height:266px;margin-left:-157.5px;touch-action:none}
+.mascot.big.hot{filter:drop-shadow(0 0 18px rgba(255,166,84,.9))}
+.adjust{position:absolute;left:50%;top:calc(var(--sat) + 409px - 134px);width:188px;margin-left:-94px;display:flex;flex-direction:column;align-items:center;gap:8px;z-index:6}
+.food-circle{width:64px;height:64px;border-radius:50%;background:var(--w);border:5px solid #ffe9d6;box-shadow:0 0 28px rgba(255,166,84,.7),0 0 40px rgba(255,166,84,.4);display:grid;place-items:center}
+.food-circle img,.food-circle .emoji{width:44px;height:44px}
+.amounts{display:flex;gap:8px}
+.amounts button{width:41px;height:26px;background:#fff;border:1px solid var(--n200);border-radius:4px;font-weight:500;font-size:14px;line-height:20px;text-align:center;color:var(--k)}
+.amounts button.on{background:var(--p500);border:2px solid #000;color:var(--k)}
+.adj-btns{display:flex;gap:8px;justify-content:flex-end;width:100%}
+.ibtn{position:relative;width:43px;height:26px;display:grid;place-items:center;color:var(--k);--s:var(--k)}
+.ibtn.no{--f:var(--r)}.ibtn.yes{--f:var(--g)}
+.ibtn .shp path{fill:var(--f);stroke:var(--s);stroke-width:2}
+.drag{position:absolute;left:0;right:0;bottom:0;height:calc(var(--sab) + 167px);z-index:5}
+.drag-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.ostrip{position:absolute;left:50%;background:var(--p400)}
+.ostrip.top{top:2.5px;width:161px;height:7px;margin-left:-80px;clip-path:polygon(0 0,100% 0,calc(100% - 8px) 100%,9px 100%)}
+.ostrip.bot{bottom:0;width:210px;height:10px;margin-left:-105px;clip-path:polygon(12px 0,calc(100% - 10px) 0,100% 100%,0 100%)}
+.drag-in{position:relative;z-index:1;padding:20px 16px 0;display:flex;flex-direction:column;align-items:center;gap:13px}
+.drag-hint{font-weight:300;font-size:14px;line-height:20px;color:var(--n400)}
+.items{display:flex;gap:8px;width:100%;overflow-x:auto;scrollbar-width:none;padding-bottom:4px}
+.items::-webkit-scrollbar{display:none}
+.item{position:relative;width:92px;height:94px;flex:none;background:var(--w);border-radius:4px;padding:8px 0;display:flex;flex-direction:column;align-items:center;gap:4px;touch-action:none;user-select:none}
+.item img,.item .emoji{width:44px;height:44px;pointer-events:none}
+.item .it-t{text-align:center}
+.item .it-t b{display:block;font-weight:400;font-size:10px;line-height:15px;color:var(--k)}
+.item .it-t span{display:block;font-size:10px;line-height:15px;color:var(--n400)}
+.item em{position:absolute;right:0;top:0;width:22px;font-style:normal;font-weight:500;font-size:14px;line-height:20px;text-align:center}
+.dragghost{position:absolute;width:44px;height:44px;pointer-events:none;z-index:50;filter:drop-shadow(0 6px 10px rgba(0,0,0,.25))}
+.toast{position:absolute;left:16px;right:16px;top:calc(var(--sat) + 1px);height:45px;background:#fff;border-radius:6px;box-shadow:0 3px 12px rgba(47,43,61,.14);display:flex;align-items:center;gap:12px;padding:12px 16px;font-size:14px;line-height:21px;color:#353945;z-index:60}
+.warn{position:absolute;left:16px;right:16px;top:calc(var(--sat) + 8px);z-index:70;background:#fdcbcb;color:#7c1818;padding:10px 12px;border-radius:6px;font-size:13px;line-height:18px;box-shadow:0 3px 12px rgba(47,43,61,.14)}
 </style>
 </head>
 <body>
-<div class="app">
-  <header>
-    <button class="back" id="btnBack">←</button>
-    <span class="logo" id="hdrLogo"></span>
-    <h1 id="hdrTitle">Tofu</h1>
-    <span class="conn"><span class="cdot" id="cdot"></span><span id="connTxt">Chưa nối</span></span>
-  </header>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M19.5 12H5M11.5 18.5 4.8 12l6.7-6.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M12 2.6a5.6 5.6 0 0 0-5.6 5.6v4.3l-1.9 2.8c-.4.6 0 1.4.7 1.4h13.6c.7 0 1.1-.8.7-1.4l-1.9-2.8V8.2A5.6 5.6 0 0 0 12 2.6Zm-2.4 15.7a2.4 2.4 0 0 0 4.8 0Z" fill="currentColor"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M3.5 6h17M3.5 12h17M3.5 18h17" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-chev-down" viewBox="0 0 16 16"><path d="M4 6h8l-4 5z" fill="currentColor"/></symbol>
+  <symbol id="i-chev-right" viewBox="0 0 32 32"><path d="M12.5 9.5 19 16l-6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 16 16"><path d="M1.6 6.4a9.6 9.6 0 0 1 12.8 0M4 8.9a6 6 0 0 1 8 0M6.4 11.4a2.6 2.6 0 0 1 3.2 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="13.6" r="1" fill="currentColor"/></symbol>
+  <symbol id="i-wifi1" viewBox="0 0 16 16"><path d="M1.6 6.4a9.6 9.6 0 0 1 12.8 0M4 8.9a6 6 0 0 1 8 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".3"/><path d="M6.4 11.4a2.6 2.6 0 0 1 3.2 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="13.6" r="1" fill="currentColor"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3" y="7.2" width="10" height="7.3" rx="1.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.3 7.2V5.3a2.7 2.7 0 0 1 5.4 0v1.9" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5l4.8 4.8L19.5 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-loader" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.6 2.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 20 20"><path d="M10 2.4 18.7 17.4H1.3Z" fill="#fc6828"/><path d="M10 7.2v4.6" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="10" cy="14.6" r="1.15" fill="#fff"/></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.2A10.4 10.4 0 0 1 12 5c5 0 8.6 3.5 10 7-.5 1.2-1.3 2.4-2.3 3.4M6.5 6.6C4.4 8 2.9 10 2 12c1.4 3.5 5 7 10 7 1.8 0 3.4-.4 4.8-1.2M9.9 9.9a3 3 0 0 0 4.2 4.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-torch" viewBox="0 0 24 24"><path d="M9 2h6v3l-1.2 2.4a2 2 0 0 0-.2.9V22h-3.2V8.3a2 2 0 0 0-.2-.9L9 5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 5h6" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM5 5h3v3H5zM16 5h3v3h-3zM5 16h3v3H5zM14 14h3v3h-3zM18 14h3v3h-3zM14 18h3v3h-3zM18 18h3v3h-3z" fill="currentColor"/></symbol>
+  <symbol id="i-check-circle" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#4bbe7f"/><path d="M5.5 10.3l3 3 6-6.2" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-x-red" viewBox="0 0 20 20"><path d="M5 5l10 10M15 5 5 15" stroke="#cd2424" stroke-width="2.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-check-green" viewBox="0 0 12 12"><path d="M2 6.3l2.7 2.7L10 3.6" fill="none" stroke="#4bbe7f" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-radio" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8.5" fill="none" stroke="#bab7b4" stroke-width="1.5"/></symbol>
+</svg>
 
-  <main>
-    <div class="warnbar" id="warn">⚠️ Trình duyệt này KHÔNG có Web Bluetooth. <b>iPhone:</b> mở link trong app <b>Bluefy</b> (Safari &amp; Chrome-iOS đều không chạy BLE). <b>Android:</b> Chrome/Edge.</div>
+<div class="app" id="app">
+  <div class="sb" id="sb"><span>9:41</span><i><b></b><svg class="ic s16" style="width:15px;height:11px"><use href="#i-wifi"/></svg><em></em></i></div>
+  <div class="warn" id="warn" hidden>This browser has no Web Bluetooth. iPhone: open in <b>Bluefy</b>. Android/PC: Chrome or Edge.</div>
+  <div class="toast" id="toast" hidden><svg class="ic s20"><use href="#i-check-circle"/></svg><span id="toastText">Feed successfully!</span></div>
 
-    <!-- ===== LIST (Tofu selection) ===== -->
-    <section class="view active" id="v-list">
-      <div class="card">
-        <h2>Tofu của bạn</h2>
-        <p class="sub">Chọn 1 Tofu để kết nối lại, hoặc thêm Tofu mới.</p>
-        <div class="listwrap" id="tofuList"></div>
-        <button class="btn" id="btnAddNew" style="margin-top:14px">＋ Thêm Tofu mới</button>
-        <button class="btn ghost" id="btnForgetAll" style="margin-top:8px;display:none">Quên tất cả Tofu</button>
-        <p class="sub" id="forgetNote" style="margin-top:10px;font-size:12px;display:none">📱 <b>iPhone:</b> sau khi Quên, vào <b>Cài đặt → Bluetooth</b> → bấm ⓘ cạnh <b>TOFU</b> → <b>Forget This Device</b>, để nó không tự kết nối chen ngang lần kích hoạt sau.</p>
+  <!-- ===== Wake Tofu up ===== -->
+  <section class="screen stage" id="s-wake">
+    <div class="grid"><i></i><i></i><i></i></div>
+    <svg class="globe" viewBox="0 0 78 78"><circle cx="39" cy="39" r="38"/><ellipse cx="39" cy="39" rx="25.5" ry="38"/><ellipse cx="39" cy="39" rx="6" ry="38"/><ellipse cx="39" cy="39" rx="38" ry="24.5"/><ellipse cx="39" cy="39" rx="38" ry="10"/></svg>
+    <div class="wm">TOFU</div>
+    <div class="stage-body">
+      <div class="stage-center" style="justify-content:flex-end;padding-bottom:98px">
+        <img class="device" src="assets/device-black.png" alt="">
+        <div class="stage-text"><h1>Wake Tofu up</h1><p>Tofu is ready to connect.<br>Scan the QR code on your Tofu device to continue.</p></div>
       </div>
-    </section>
-
-    <!-- ===== SCAN QR (them Tofu moi) ===== -->
-    <section class="view" id="v-scan">
-      <div class="card">
-        <h2>Quét QR trên Tofu</h2>
-        <p class="sub" id="qrHint">Hướng camera vào mã QR đang hiện trên màn hình Tofu.</p>
-        <div id="qrView" class="qrbox">
-          <video id="qrVideo" playsinline muted></video>
-          <div class="qrframe"></div>
-          <canvas id="qrCanvas" style="display:none"></canvas>
-        </div>
-        <div id="qrResult" style="display:none;text-align:center">
-          <div class="pill ok" style="margin:8px auto">✓ Đã đọc mã Tofu</div>
-          <div class="qrmac">🔗 <span id="qrMac">—</span></div>
-          <p class="sub">App thật sẽ tự bond bằng mã này. Bản web bắt buộc chọn thiết bị 1 lần ở bước sau (giới hạn trình duyệt).</p>
-          <button class="btn" id="btnScanConnect">Kết nối Tofu này →</button>
-        </div>
-        <button class="btn ghost" id="btnScanSkip" style="margin-top:12px">Bỏ qua quét → chọn thiết bị</button>
+      <div class="stage-foot">
+        <div class="actions"><button class="btn pri" data-shape="btn" id="btnScanQR"><span>Scan QR code</span></button></div>
+        <button class="ghost" id="btnSkipQR">No camera? Choose the device manually</button>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <!-- ===== WIFI ===== -->
-    <section class="view" id="v-wifi">
-      <div class="card">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <h2 style="margin:0;flex:1">Chọn Wi-Fi</h2>
-          <span class="pill idle" id="wifiPill">—</span>
-        </div>
-        <p class="sub" id="wifiHint">Bấm “Quét” để tìm mạng quanh Tofu.</p>
-        <div class="wifi" id="apList"><div class="empty">Chưa quét.</div></div>
-        <button class="btn sec" id="btnRescan" style="margin-top:14px">↻ Quét lại</button>
-      </div>
-    </section>
+  <!-- ===== Scan QR ===== -->
+  <section class="screen scan" id="s-scan">
+    <video id="qrVideo" playsinline muted></video>
+    <img class="qr-demo" id="qrDemo" src="assets/scan-demo.jpg" alt="" hidden>
+    <canvas id="qrCanvas" hidden></canvas>
+    <div class="qr-mask" id="qrMask"></div>
+    <div class="focus-ring" id="focusRing" hidden></div>
+    <svg class="qr-frame" viewBox="0 0 274 340" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M1.5 44V19A17.5 17.5 0 0 1 19 1.5H35"/><path d="M239 1.5h16A17.5 17.5 0 0 1 272.5 19v25"/><path d="M272.5 296v25a17.5 17.5 0 0 1-17.5 17.5h-16"/><path d="M35 338.5H19A17.5 17.5 0 0 1 1.5 321v-25"/><path d="M103.5 1.5h67M103.5 338.5h67M1.5 128v84M272.5 128v84"/></svg>
+    <div class="appbar dark"><button class="back" id="btnScanBack" aria-label="Back"><svg class="ic"><use href="#i-arrow"/></svg></button></div>
+    <h1 class="scan-title">Scan Your Tofu</h1>
+    <div class="cam-hint" id="camHint" hidden>Tap anywhere to focus</div>
+    <div class="cam-ctl">
+      <button class="cam-btn" id="btnTorch" hidden aria-label="Flashlight"><svg class="ic"><use href="#i-torch"/></svg></button>
+      <div class="exp" id="expWrap" hidden><b>&#9788;&#8722;</b><input type="range" id="expSlider" aria-label="Exposure"><b>&#9788;+</b></div>
+    </div>
+    <div class="qr-invalid" id="qrInvalid" hidden>
+      <i class="handle"></i>
+      <div class="ring"><svg class="ic"><use href="#i-qr"/></svg></div>
+      <h2>Invalid QR code</h2>
+      <p>The scanned QR code is not valid. Please check and try again.</p>
+    </div>
+  </section>
 
-    <!-- ===== ACTIVATE (bắn mã 6 số lên đây) ===== -->
-    <section class="view" id="v-activate">
-      <div class="card" style="text-align:center">
-        <div class="tofu-wrap" id="tofuAct"></div>
-        <h2 id="actTitle">Đang kết nối server…</h2>
-        <p class="sub" id="actSub">Tofu vừa nối WiFi, đang lấy mã kích hoạt từ server. Chờ chút…</p>
-        <div id="codeBox" style="display:none">
-          <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Mã kích hoạt</div>
-          <div class="codebig" id="actCode">––––––</div>
-          <p class="sub" style="margin-top:12px">Nhập mã này vào trang kích hoạt của server (làm tay). Xong Tofu tự báo và mở luồng chính.</p>
-        </div>
-        <div class="pill wait" id="actPill" style="margin:8px auto 0">Chờ…</div>
-        <p class="sub" style="margin-top:14px;font-size:12px">⚠️ Kích hoạt lỗi / quá lâu / máy tắt giữa chừng? Server sẽ không gửi xác nhận → Tofu vẫn kẹt ở màn QR. Cách xử lý: <b>reset máy (giữ nút 7s)</b> rồi làm lại từ đầu (nhớ Quên device + gỡ bond iPhone).</p>
-        <button class="btn ghost" id="btnSkipAct" style="margin-top:12px">← Về danh sách Tofu</button>
-      </div>
-    </section>
-
-    <!-- ===== HOME ===== -->
-    <section class="view" id="v-home">
-      <div class="card">
-        <div class="tofu-badge"><div id="tofuHome"></div><div class="mood">Mood status</div></div>
-        <p class="sub" id="hWifi" style="margin:10px 0 8px;text-align:center">—</p>
-        <div class="lvline"><span class="star">⭐</span><span class="lvname" id="hLv">Level 1</span><span class="xp" id="hXp">0 / 500 XP</span></div>
-        <div class="gauge" id="gXp" style="margin-bottom:12px"></div>
-        <div class="nameline"><span style="font-size:15px">🫘</span><span class="nm" id="hNm">My Tofu</span><span class="beans" id="hBeans">0 beans</span></div>
-        <div class="stat"><div class="ic">🍖</div><div class="lb">Feed</div><div class="gauge" id="bFeed"></div><div class="val" id="vFeed">–</div></div>
-        <div class="stat"><div class="ic">💧</div><div class="lb">Drink</div><div class="gauge" id="bDrink"></div><div class="val" id="vDrink">–</div></div>
-        <div class="stat"><div class="ic">🔋</div><div class="lb">Battery</div><div class="gauge" id="bBat"></div><div class="val" id="vBat">–</div></div>
-        <div class="stat"><div class="ic">🔗</div><div class="lb">Bonding</div><div class="gauge" id="bBond"></div><div class="val" id="vBond">–</div></div>
-        <div class="qtyrow">
-          <span class="qtylb">🍽️ Số món / lượt</span>
-          <button class="qtybtn" id="qtyMinus">−</button>
-          <span class="qtyval" id="qtyVal">1</span>
-          <button class="qtybtn" id="qtyPlus">＋</button>
-        </div>
-        <p class="sub" style="margin:-2px 0 8px;font-size:11.5px">Cho nhiều món 1 lượt (vd 4 = +4× no) — anim chỉ chạy 1 lần.</p>
-        <div class="row">
-          <button class="btn" id="btnFeed">🍖 Cho ăn</button>
-          <button class="btn" id="btnDrink" style="background:#2f9fd0;box-shadow:0 6px 16px -6px #2f9fd0aa">💧 Cho uống</button>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <button class="btn sec" id="btnRefresh">↻ Cập nhật</button>
-          <button class="btn sec" id="btnWifi2">Đổi Wi-Fi</button>
+  <!-- ===== Connect (ready / connecting / success / fail) ===== -->
+  <section class="screen stage" id="s-connect">
+    <div class="grid"><i></i><i></i><i></i></div>
+    <svg class="globe" viewBox="0 0 78 78"><circle cx="39" cy="39" r="38"/><ellipse cx="39" cy="39" rx="25.5" ry="38"/><ellipse cx="39" cy="39" rx="6" ry="38"/><ellipse cx="39" cy="39" rx="38" ry="24.5"/><ellipse cx="39" cy="39" rx="38" ry="10"/></svg>
+    <div class="wm">TOFU</div>
+    <div class="stage-body">
+      <div class="stage-center">
+        <img class="device" src="assets/device-black.png" alt="">
+        <div class="callout">
+          <i class="brk tr"></i><i class="brk bl"></i>
+          <div class="callout-box" data-shape="callout">
+            <div class="callout-text"><h2 id="cTitle">Connecting...</h2><p id="cSub">Connect Tofu to Bluetooth</p></div>
+            <div class="callout-foot" id="cFoot"><svg class="ic s20"><use href="#i-warn"/></svg><span>Please don't exit during connection</span></div>
+          </div>
         </div>
       </div>
-    </section>
+      <div class="stage-foot"><div class="actions" id="cActions"></div></div>
+    </div>
+  </section>
 
-    <div class="logwrap"><details><summary>Nhật ký BLE (debug)</summary><div class="log" id="log"></div></details></div>
-  </main>
+  <!-- ===== Getting started ===== -->
+  <section class="screen stage" id="s-start">
+    <div class="grid"><i></i><i></i><i></i></div>
+    <div class="wm">TOFU</div>
+    <div class="stage-body">
+      <div class="stage-center">
+        <img class="device" src="assets/device-black.png" alt="">
+        <div class="stage-text"><h1>Getting started</h1><ul><li>Maintain close proximity to the Tofu device.</li><li>Ensure your home Wi-Fi is set to the 2.4 GHz band.</li></ul></div>
+      </div>
+      <div class="stage-foot"><div class="actions"><button class="btn pri" data-shape="btn" id="btnStartWifi"><span>Searching Tofu</span></button></div></div>
+    </div>
+  </section>
+
+  <!-- ===== Select Wi-Fi ===== -->
+  <section class="screen wifi" id="s-wifi">
+    <div class="wcard" data-shape="cardtr">
+      <div class="wbody">
+        <div style="position:relative"><button class="back" id="btnWifiBack" style="position:absolute;left:-12px;top:-13px;width:40px;height:40px;background:transparent;clip-path:none" aria-label="Back"><svg class="ic"><use href="#i-arrow"/></svg></button><h1>Select Wi-Fi</h1></div>
+        <div class="wsel" id="wifiSel" hidden><div class="txt"><svg class="ic s16" id="wifiSelIc"><use href="#i-loader"/></svg><span id="wifiSelName"></span></div><svg class="ic s16"><use href="#i-wifi"/></svg></div>
+        <div class="wsearch" id="wifiSearching"><svg class="ic s16 spin"><use href="#i-loader"/></svg><span>Searching...</span></div>
+        <div class="wlist" id="wifiList" hidden><div class="wlabel">Networks</div><div class="wrows" id="apList"></div></div>
+        <div class="spacer"></div>
+        <div class="actions" id="wifiEscape" hidden><button class="btn sec" data-shape="btn" id="btnWifiRescan"><span>Rescan</span></button><button class="btn sec" data-shape="btn" id="btnWifiSkip"><span>Skip</span></button></div>
+      </div>
+    </div>
+    <div class="overlay" id="wifiModal" hidden>
+      <div class="modal">
+        <div class="modal-h"><button class="x" id="wifiModalX"><svg class="ic"><use href="#i-x"/></svg></button><h2 id="wifiModalTitle">No Wi-Fi Networks Found</h2><p id="wifiModalSub">Make sure Wi-Fi is turned on and try again.</p></div>
+        <div class="modal-c"><div class="actions"><button class="btn pri" data-shape="btn" id="wifiModalBtn"><span>Retry</span></button></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Tofu is setting up ===== -->
+  <section class="screen stage" id="s-setup">
+    <div class="grid"><i></i><i></i><i></i></div>
+    <div class="wm">TOFU</div>
+    <div class="stage-body">
+      <div class="stage-center">
+        <img class="device" src="assets/device-black.png" alt="">
+        <div class="callout">
+          <i class="brk tr"></i><i class="brk bl"></i>
+          <div class="callout-box" data-shape="callout">
+            <div class="callout-text" style="min-height:0;padding-top:52px;padding-bottom:12px"><h2>Tofu is setting up...</h2></div>
+            <div class="chk">
+              <div class="ok" id="chk1"><svg class="ic s12"><use href="#i-check-green"/></svg><span>Share Wi-Fi with Tofu</span></div>
+              <div class="ok" id="chk2"><svg class="ic s12"><use href="#i-check-green"/></svg><span>Tofu joined network</span></div>
+              <div id="chk3"><svg class="ic s12 spin"><use href="#i-loader"/></svg><span>Syncing Digital Tofu...</span></div>
+            </div>
+            <div class="code" id="codeBox" hidden><small>Activation code</small><b id="actCode">------</b><span>Enter this code on the server portal to activate your Tofu.</span></div>
+            <div class="callout-foot" id="setupFoot"><svg class="ic s20"><use href="#i-warn"/></svg><span>Please don't exit during connection</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="stage-foot"><button class="ghost" id="btnSkipSetup">Skip for now</button></div>
+    </div>
+  </section>
+
+  <!-- ===== Tofu Is Ready ===== -->
+  <section class="screen stage" id="s-ready">
+    <div class="grid"><i></i><i></i><i></i></div>
+    <div class="stage-body">
+      <div class="stage-center">
+        <img class="device" src="assets/device-black.png" alt="">
+        <div class="stage-text"><h1>Tofu Is Ready!</h1><p>Setup completed successfully.<br>Your Tofu is now connected and ready to play.</p></div>
+      </div>
+      <div class="stage-foot"><div class="actions"><button class="btn pri" data-shape="btn" id="btnMeet"><span>Meet Tofu</span></button></div></div>
+    </div>
+  </section>
+
+  <!-- ===== Home ===== -->
+  <section class="screen home" id="s-home">
+    <div class="grid"><i></i><i></i><i></i></div>
+    <svg class="home-hdr" data-shape="homehdr"></svg>
+    <div class="topbar">
+      <button class="tb-left" id="btnTofuMenu"><span class="avatar"><img src="assets/avatar.png" alt=""></span><span class="nm" id="hName">Tofu</span><svg class="ic s16"><use href="#i-chev-down"/></svg></button>
+      <div class="tb-right"><button class="ib" id="btnBell" aria-label="Notifications"><svg class="ic"><use href="#i-bell"/></svg></button><button class="ib" id="btnMenu" aria-label="Menu"><svg class="ic"><use href="#i-menu"/></svg></button></div>
+    </div>
+    <button class="sidestate" id="sideState" aria-label="Wi-Fi and battery">
+      <svg viewBox="0 0 45 175">
+        <path d="M45 0 6 28.5Q.5 32.5.5 39.5V139.5Q.5 144.5 5.5 147.5L35 167.5Q43 172.5 45 160Z" fill="#1a1a1a"/>
+        <g id="battCells">
+          <path class="cell" d="M40.5 27.5 20.5 41v9.5L40.5 37Z"/><path class="cell" d="M40.5 42 20.5 55.5V65L40.5 51.5Z"/><path class="cell" d="M40.5 56.5 20.5 70v9.5L40.5 66Z"/>
+          <path class="cell" d="M40.5 71 20.5 84.5V94L40.5 80.5Z"/><path class="cell" d="M40.5 85.5 20.5 99v9.5L40.5 95Z"/><path class="cell" d="M40.5 100 20.5 113.5v9.5L40.5 109.5Z"/>
+        </g>
+        <path d="M40.5 114 8.5 135Q6 137 6 139.5Q6 142 8.5 143.5L34.5 161.5Q38.5 163.5 40.5 157.5Z" fill="#4bbe7f"/>
+        <path d="M29.5 129.5 28 130 21 140.5 22 141.5 27 142V151L33.5 140V139L28 138.5Z" fill="#fffcfa"/>
+        <g transform="translate(5,109.5)" fill="none" stroke="#fffcfa" stroke-width="1.2" stroke-linecap="round"><path d="M.8 3.2a7 7 0 0 1 9.4 0M2.6 5a4.5 4.5 0 0 1 5.8 0M4.4 6.8a2 2 0 0 1 2.2 0"/><circle cx="5.5" cy="8.6" r=".6" fill="#fffcfa"/></g>
+      </svg>
+    </button>
+    <div class="home-scroll">
+      <div class="home-content">
+        <div class="mood"><div class="mascot" id="homeMascot" style="width:71px;height:60px"><img src="assets/mascot.png" alt=""><i class="eye l"></i><i class="eye r"></i></div><div class="mood-t" id="hMood">Mood status</div></div>
+        <div class="lvls">
+          <div class="lvrow"><div class="tile" style="--tile:#ffcaa9"><img src="assets/icons/star.png" data-emoji="⭐" alt=""></div><div class="lvtxt"><div class="lvline"><b>Level <span id="hLevel">1</span></b><span class="xp"><span id="hXp">0</span> XP/ <span id="hXpMax">500</span> XP</span></div><svg class="lvbar" data-shape="lvbar" id="lvBar" data-pct="0"></svg></div></div>
+          <div class="lvrow"><div class="tile" style="--tile:#fff2c7"><img src="assets/icons/soybean.png" data-emoji="🫘" alt=""></div><div class="lvtxt"><div class="lvline"><b>Soybean</b><span class="xp"><span id="hBeans">0</span> beans</span></div><svg class="lvbar line" data-shape="lvline"></svg></div></div>
+        </div>
+        <div class="stats">
+          <div class="stat" data-shape="stat" style="--gc:#fc6828"><div class="stat-l"><span class="tile30" style="--tile:#ffe4d3"><img src="assets/icons/chicken.png" data-emoji="🍗" alt=""></span><b>Feed</b></div><div class="stat-r"><div class="gauge" id="gFeed"><i></i><i></i><i></i><i></i><i></i></div><b id="vFeed">--%</b></div></div>
+          <div class="stat" data-shape="stat" style="--gc:#0ac7ff"><div class="stat-l"><span class="tile30" style="--tile:#b8e7f8"><img src="assets/icons/water.png" data-emoji="🥛" alt=""></span><b>Drink</b></div><div class="stat-r"><div class="gauge" id="gDrink"><i></i><i></i><i></i><i></i><i></i></div><b id="vDrink">--%</b></div></div>
+          <div class="stat" data-shape="stat" style="--gc:#00ea90"><div class="stat-l"><span class="tile30" style="--tile:#bafdde"><img src="assets/icons/battery.png" data-emoji="🔋" alt=""></span><b>Battery</b></div><div class="stat-r"><div class="gauge" id="gBat"><i></i><i></i><i></i><i></i><i></i></div><b id="vBat">--%</b></div></div>
+          <div class="stat" data-shape="stat" style="--gc:#ee78a2"><div class="stat-l"><span class="tile30" style="--tile:#f9d1e1"><img src="assets/icons/heart.png" data-emoji="💕" alt=""></span><b>Bonding level</b></div><div class="stat-r"><div class="gauge" id="gBond"><i></i><i></i><i></i><i></i><i></i></div><b id="vBond">--%</b></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="home-bottom">
+      <svg class="hb-svg" data-shape="homebottom"></svg>
+      <span class="lv1">Lv.<span id="hLv1">1</span></span>
+      <button class="feedbtn" data-shape="feedbtn" id="btnFeedScreen" aria-label="Feed"><img src="assets/icons/chicken.png" data-emoji="🍗" alt=""></button>
+      <nav class="tabs">
+        <button class="tab on"><img src="assets/icons/tab-home.png" data-emoji="🏠" alt=""><span>Home</span></button>
+        <button class="tab"><img src="assets/icons/tab-shop.png" data-emoji="🏪" alt=""><span>Shop</span></button>
+        <button class="tab"><img src="assets/icons/tab-inventory.png" data-emoji="🧰" alt=""><span>Inventory</span></button>
+        <button class="tab"><img src="assets/icons/tab-chats.png" data-emoji="💬" alt=""><span>Chats</span></button>
+        <button class="tab"><img src="assets/icons/tab-quest.png" data-emoji="📜" alt=""><span>Quest</span></button>
+      </nav>
+      <i class="home-ind"></i>
+    </div>
+
+    <!-- Your Tofu -->
+    <div class="sheet-ov" id="shList" hidden><div class="sheet">
+      <i class="handle"></i><h2 class="sh-title">Your Tofu</h2>
+      <div class="sh-sub">Selected</div>
+      <div class="trows" id="tofuList"></div>
+      <div class="sh-actions"><button class="btn pri" data-shape="btn" id="btnAddNew"><span>Add new</span></button></div>
+    </div></div>
+    <!-- Device connection -->
+    <div class="sheet-ov" id="shDevice" hidden><div class="sheet">
+      <i class="handle"></i><h2 class="sh-title">Device connection</h2>
+      <div class="dev-hero"><img id="devImg" src="assets/mascot-online.png" alt=""><b id="devName">Tofu</b><div class="stt" id="devStt"><i></i><span>Offline</span></div></div>
+      <div class="sh-actions" style="padding:12px 8px 0"><button class="btn sec" data-shape="btn" id="btnUnpair"><span>Unpair</span></button><button class="btn pri" data-shape="btn" id="btnReconnect"><span>Reconnect</span></button></div>
+    </div></div>
+    <!-- Unpair modal -->
+    <div class="overlay" id="mdUnpair" style="z-index:40" hidden>
+      <div class="modal">
+        <div class="modal-h"><button class="x" id="unpairX"><svg class="ic"><use href="#i-x"/></svg></button><h2>Unpair Device</h2><p>You are about to unpair this TOFU.</p></div>
+        <div class="modal-c">
+          <div><div class="what">What will happen:</div><ul><li>Device connection will be removed</li><li>Historical data will be deleted.</li></ul></div>
+          <div class="actions"><button class="btn sec" data-shape="btn" id="unpairCancel"><span>Cancel</span></button><button class="btn pri" data-shape="btn" id="unpairConfirm"><span>Confirm</span></button></div>
+        </div>
+      </div>
+    </div>
+    <!-- Select Wi-Fi (in app) -->
+    <div class="sheet-ov" id="shWifi" hidden><div class="sheet">
+      <i class="handle"></i>
+      <img class="banner" src="assets/wifi-banner.png" alt="">
+      <h2 class="sh-title" style="margin-top:0">Select Wi-Fi</h2>
+      <div class="wsel" id="wifiSel2" hidden><div class="txt"><svg class="ic s16" id="wifiSelIc2"><use href="#i-loader"/></svg><span id="wifiSelName2"></span></div><svg class="ic s16"><use href="#i-wifi"/></svg></div>
+      <div class="wsearch" id="wifiSearching2"><svg class="ic s16 spin"><use href="#i-loader"/></svg><span>Searching...</span></div>
+      <div class="wlist" id="wifiList2" hidden><div class="wlabel">Networks</div><div class="wrows" id="apList2"></div></div>
+      <div class="sh-actions"><button class="btn sec" data-shape="btn" id="btnWifi2Close"><span>Close</span></button><button class="btn pri" data-shape="btn" id="btnWifi2Rescan"><span>Rescan</span></button></div>
+    </div></div>
+    <!-- Tofu not found -->
+    <div class="sheet-ov" id="shNotFound" hidden><div class="sheet r4">
+      <i class="handle"></i>
+      <div class="nf-box"><img src="assets/mascot-notfound.png" alt=""><span>Tofu not found</span></div>
+      <p class="nf-p">Please check if Tofu is in a discoverable state:</p>
+      <ol class="nf-ol">
+        <li><i>1</i><span>Tofu cannot be discovered while it is powered off, in sleep mode, or charging. Please wake up Tofu first.</span></li>
+        <li><i>2</i><span>When Tofu has just been awakened, the Wi-Fi module is initializing and it may take around 20 seconds before it can be discovered.</span></li>
+        <li><i>3</i><span>Poor Wi-Fi network connectivity may result in Tofu's failure to connect to Wi-Fi and thus being undiscoverable.</span></li>
+      </ol>
+      <div class="sh-actions"><button class="btn sec" data-shape="btn" id="btnNfSkip"><span>Skip</span></button><button class="btn pri" data-shape="btn" id="btnNfReconnect"><span>Re-connect</span></button></div>
+    </div></div>
+    <!-- Log / tools -->
+    <div class="sheet-ov" id="shLog" hidden><div class="sheet">
+      <i class="handle"></i><h2 class="sh-title">Connection log</h2>
+      <div class="sh-actions" style="padding-top:0"><button class="btn sec" data-shape="btn" id="btnRefresh"><span>Refresh</span></button><button class="btn pri" data-shape="btn" id="btnChangeWifi"><span>Change Wi-Fi</span></button></div>
+      <div class="logbox" id="log"></div>
+      <button class="ghost" id="btnForgetAll">Forget all saved Tofu</button>
+      <button class="ghost" id="btnLogClose">Close</button>
+    </div></div>
+  </section>
+
+  <!-- ===== Feed ===== -->
+  <section class="screen feed" id="s-feed">
+    <div class="appbar"><button class="back" id="btnFeedBack" aria-label="Back"><svg class="ic"><use href="#i-arrow"/></svg></button><h1>Feed</h1><img class="shop" src="assets/icons/shop.png" data-emoji="🏪" alt=""></div>
+    <div class="pills">
+      <div class="pill" style="--gc:#fc6828"><img src="assets/icons/chicken.png" data-emoji="🍗" alt=""><b>Feed</b><div class="mgauge" id="mgFeed"><i></i><i></i><i></i><i></i><i></i></div><span id="mvFeed">--%</span></div>
+      <div class="pill" style="--gc:#0ac7ff"><img src="assets/icons/water.png" data-emoji="🥛" alt=""><b>Drink</b><div class="mgauge" id="mgDrink"><i></i><i></i><i></i><i></i><i></i></div><span id="mvDrink">--%</span></div>
+    </div>
+    <div class="feed-stage">
+      <div class="mascot big" id="feedMascot"><img src="assets/mascot.png" alt=""><i class="eye l"></i><i class="eye r"></i></div>
+      <div class="adjust" id="adjust" hidden>
+        <div class="food-circle"><img id="adjIcon" src="assets/icons/chicken.png" data-emoji="🍗" alt=""></div>
+        <div class="amounts" id="amounts"><button data-n="1" class="on">1</button><button data-n="3">3</button><button data-n="5">5</button><button data-n="10">10</button></div>
+        <div class="adj-btns"><button class="ibtn no" data-shape="btn" id="adjNo" aria-label="Cancel"><svg class="ic s20" viewBox="0 0 24 24"><path d="M5.5 5.5 18.5 18.5M18.5 5.5 5.5 18.5" stroke="#000" stroke-width="5" stroke-linecap="round"/></svg></button><button class="ibtn yes" data-shape="btn" id="adjYes" aria-label="Confirm"><svg class="ic s20" viewBox="0 0 24 24"><path d="M3.5 12.5 9.5 18.5 20.5 5.5" fill="none" stroke="#000" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+      </div>
+    </div>
+    <div class="drag">
+      <svg class="drag-svg" data-shape="dragtop"></svg><i class="ostrip top"></i><i class="ostrip bot"></i>
+      <div class="drag-in">
+        <div class="drag-hint">Hold the item, drag and drop</div>
+        <div class="items" id="items">
+          <button class="item" data-kind="feed"><img src="assets/icons/chicken.png" data-emoji="🍗" alt=""><div class="it-t"><b>Chicken leg</b><span>+3% Feed</span></div><em>∞</em></button>
+          <button class="item" data-kind="drink"><img src="assets/icons/water.png" data-emoji="🥛" alt=""><div class="it-t"><b>Water glass</b><span>+3% Drink</span></div><em>∞</em></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Wi-Fi info (password) - shared by onboarding + in-app -->
+  <div class="sheet-ov" id="shPw" hidden><div class="sheet r4">
+    <i class="handle"></i><h2 class="sh-title">Wi-Fi info</h2>
+    <div class="inputs">
+      <div class="input"><input id="pwSsid" readonly></div>
+      <div class="input"><input id="pwInput" type="password" placeholder="Password" autocomplete="off"><button class="eye" id="pwEye" aria-label="Show password"><svg class="ic"><use href="#i-eye-off"/></svg></button></div>
+    </div>
+    <div class="sh-actions" style="padding-top:20px"><button class="btn sec" data-shape="btn" id="pwCancel"><span>Cancel</span></button><button class="btn pri" data-shape="btn" id="pwConnect"><span>Connect</span></button></div>
+  </div></div>
 </div>
 
-<!-- password sheet -->
-<div class="modal" id="pwModal"><div class="sheet">
-  <h3>Nhập mật khẩu Wi-Fi</h3><p class="ssid" id="pwSsid">SSID</p>
-  <div class="pwrow"><input id="pwInput" type="password" placeholder="Mật khẩu (trống nếu mạng mở)" autocomplete="off">
-    <button class="eye" id="pwEye" type="button">👁</button></div>
-  <div class="row"><button class="btn ghost" id="pwCancel">Huỷ</button><button class="btn" id="pwConnect">Kết nối</button></div>
-</div></div>
-
-<!-- overlay trang thai ket noi wifi -->
-<div class="modal" id="connModal" style="align-items:center">
-  <div class="sheet" style="border-radius:20px;max-width:340px;margin:0 16px;text-align:center;padding:28px 22px 24px">
-    <div class="connspin spin" id="connIcon">🔄</div>
-    <h3 id="connTitle" style="margin:12px 0 5px">Đang kết nối…</h3>
-    <p class="ssid" id="connMsg" style="margin:0">—</p>
-    <button class="btn" id="connBtn" style="margin-top:18px;display:none">← Chọn mạng khác</button>
-  </div>
-</div>
-
-<!-- jsQR: fallback giai ma QR cho Chrome desktop (Windows khong co BarcodeDetector) -->
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="assets/jsQR.min.js"></script>
 <script>
-/* ---------- UUID ---------- */
-const u16 = n => '0000'+n.toString(16).padStart(4,'0')+'-0000-1000-8000-00805f9b34fb';
+/* ======================= SHAPES (Figma cut-corner geometry) ======================= */
+const NS='http://www.w3.org/2000/svg';
+const SHAPES={
+  btn:(w,h)=>{const i=1;w-=2;h-=2;const c=Math.round(h*0.42*2)/2,r=4;
+    return [{d:`M${c} 0H${w-r}Q${w} 0 ${w} ${r}V${h-c}L${w-c} ${h}H${r}Q0 ${h} 0 ${h-r}V${c}Z`,t:`translate(${i},${i})`}];},
+  stat:(w,h)=>{const c=14.5,r=2.5;return [{d:`M${r} 0H${w-c}L${w} ${c}V${h-r}Q${w} ${h} ${w-r} ${h}H${c}L0 ${h-c}V${r}Q0 0 ${r} 0Z`}];},
+  cardtr:(w,h)=>[{d:`M12 0H${w-53}L${w-8} 34Q${w} 40 ${w} 48V${h}H0V12Q0 0 12 0Z`}],
+  callout:(w,h)=>{const i=.5;w-=1;h-=1;return [{d:`M27 0H${w-4}Q${w} 0 ${w} 4V${h-29}L${w-31} ${h}H4Q0 ${h} 0 ${h-4}V29Z`,t:`translate(${i},${i})`}];},
+  feedbtn:(w,h)=>[{d:`M46 0H${w-4}Q${w} 0 ${w} 4V${h-4}Q${w} ${h} ${w-4} ${h}H6Q0 ${h} 0 ${h-6}Z`}],
+  homehdr:(w,h)=>[{d:`M0 0H${w}V${h}L${w-16} ${h-24}V${h-218}H0Z`}],
+  homebottom:(w,h)=>[
+    {d:`M0 72 20 52Q24 48 30 48H228V54H30L0 84Z`,fill:'#fa5115'},
+    {d:`M-1 82 23 57Q26 54 30 54H${w-115}Q${w-110} 54 ${w-107} 51L${w-58} 8Q${w-52} 1.5 ${w-45} 1.5H${w-9}Q${w-3} 1.5 ${w-1} 7V${h+1}H-1Z`,fill:'#f2f0ed',stroke:'#bab7b4',sw:1},
+    {d:`M0 19H35L66 48H0Z`,fill:'#fffcfa'},
+    {d:`M0 17H37L67 47H268`,fill:'none',stroke:'#1a1a1a',sw:3}],
+  lvbar:(w,h,el)=>{const p=Math.max(0,Math.min(1,+(el.dataset.pct||0)/100)),f=p*(w-6.5);
+    return [{d:`M6.5 0H${w}L${w-6.5} 10.5H0Z`,fill:'#d9d5d2'},{d:`M6.5 0H${6.5+f}L${f} 10.5H0Z`,fill:'#fa5115'},{d:`M0 18.8H${w-14}L${w} -0.5`,fill:'none',stroke:'#1a1a1a',sw:2}];},
+  lvline:(w,h)=>[{d:`M0 18.8H${w-14}L${w} -0.5`,fill:'none',stroke:'#1a1a1a',sw:2}],
+  dragtop:(w,h)=>[{d:`M0 18 15 2Q17 0 20 0H${w-20}Q${w-17} 0 ${w-15} 2L${w} 18V${h}H0Z`,fill:'#f2f0ed'},
+    {d:`M-1 19 15 3Q17 1 20 1H${w-20}Q${w-17} 1 ${w-15} 3L${w+1} 19`,fill:'none',stroke:'#1a1a1a',sw:2}],
+};
+function drawShape(el){const k=el.dataset.shape,g=SHAPES[k];if(!g)return;
+  const w=el.clientWidth||el.getBoundingClientRect().width,h=el.clientHeight||el.getBoundingClientRect().height;if(!w||!h)return;
+  let svg=el.tagName==='svg'?el:el.querySelector(':scope>svg.shp');
+  if(!svg){svg=document.createElementNS(NS,'svg');svg.setAttribute('class','shp');el.prepend(svg);}
+  svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.setAttribute('preserveAspectRatio','none');
+  const paths=g(w,h,el);while(svg.firstChild)svg.removeChild(svg.firstChild);
+  for(const p of paths){const e=document.createElementNS(NS,'path');e.setAttribute('d',p.d);if(p.t)e.setAttribute('transform',p.t);
+    if(p.fill!==undefined)e.setAttribute('fill',p.fill);if(p.stroke)e.setAttribute('stroke',p.stroke);if(p.sw)e.setAttribute('stroke-width',p.sw);
+    if(p.stroke)e.setAttribute('stroke-linejoin','round');svg.appendChild(e);}}
+const ro=new ResizeObserver(es=>es.forEach(e=>drawShape(e.target)));
+function initShapes(root){(root||document).querySelectorAll('[data-shape]').forEach(el=>{drawShape(el);ro.observe(el);});}
+function redraw(root){(root||document).querySelectorAll('[data-shape]').forEach(drawShape);}
+
+
+/* ======================= UUID ======================= */
+const u16=n=>'0000'+n.toString(16).padStart(4,'0')+'-0000-1000-8000-00805f9b34fb';
 const SVC=u16(0x18F0);
-const CH={scan:u16(0xA001),cred:u16(0xA002),status:u16(0xA005),hunger:u16(0x1001),
-  thirst:u16(0x1002),battery:u16(0x1003),feed:u16(0x1004),drink:u16(0x1005),tofu:u16(0x1006)};
+const CH={scan:u16(0xA001),cred:u16(0xA002),status:u16(0xA005),hunger:u16(0x1001),thirst:u16(0x1002),battery:u16(0x1003),feed:u16(0x1004),drink:u16(0x1005),tofu:u16(0x1006)};
 
-/* ---------- Tofu SVG ---------- */
-function tofuSVG(exp,glow,size){glow=glow||'#eaf6ff';const L=44,R=76,Y=54;let eyes;
-  if(exp==='happy')eyes=`<path d="M ${L-12} ${Y+5} Q ${L} ${Y-13} ${L+12} ${Y+5}" fill="none" stroke-width="8" stroke-linecap="round"/><path d="M ${R-12} ${Y+5} Q ${R} ${Y-13} ${R+12} ${Y+5}" fill="none" stroke-width="8" stroke-linecap="round"/>`;
-  else eyes=`<rect x="${L-8}" y="${Y-15}" width="16" height="30" rx="8"/><rect x="${R-8}" y="${Y-15}" width="16" height="30" rx="8"/>`;
-  return `<svg viewBox="0 0 120 128" width="${size||120}" role="img" aria-label="Tofu"><defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--tofu-a)"/><stop offset="1" stop-color="var(--tofu-b)"/></linearGradient></defs><rect x="10" y="16" width="100" height="100" rx="30" fill="url(#tg)"/><ellipse cx="42" cy="42" rx="30" ry="16" fill="#fff" opacity=".07"/><g style="fill:#f4fbff;stroke:#f4fbff;filter:drop-shadow(0 0 4px ${glow}) drop-shadow(0 0 9px ${glow})">${eyes}</g></svg>`;}
-document.getElementById('tofuAct').innerHTML=tofuSVG('neutral','#ffb27a',110);
-document.getElementById('tofuHome').innerHTML=tofuSVG('happy','#ffb27a',110);
-document.getElementById('hdrLogo').innerHTML=tofuSVG('neutral','#ffd9bf',32);
-
-/* ---------- log ---------- */
-const logEl=document.getElementById('log');
+/* ======================= helpers ======================= */
+const $=id=>document.getElementById(id);
+const logEl=$('log');
 function log(m,c){const t=new Date().toLocaleTimeString();const d=document.createElement('div');if(c)d.className=c;d.textContent=t+'  '+m;logEl.appendChild(d);logEl.scrollTop=logEl.scrollHeight;}
+function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+let cur='';const hist=[];
+function go(id,push=true){if(cur===id)return;if(push&&cur)hist.push(cur);document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id));cur=id;
+  $('sb').classList.toggle('light',id==='s-scan'||id==='s-wifi');redraw($(id));}
+function back(){const p=hist.pop();go(p||startScreen(),false);}
+function ov(id,on){$(id).hidden=!on;if(on)redraw($(id));}
+function toast(msg,ms=2200){$('toastText').textContent=msg;$('toast').hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>$('toast').hidden=true,ms);}
+function btnRow(el,list){el.innerHTML=list.map(b=>`<button class="btn ${b.cls||'pri'}" data-shape="btn" id="${b.id}" ${b.dis?'disabled':''}><span>${b.txt}</span></button>`).join('');initShapes(el);list.forEach(b=>{if(b.fn)$(b.id).onclick=b.fn;});}
 
-/* ---------- saved tofu list (localStorage) ---------- */
-const LS='tofuList';
-function loadSaved(){try{return JSON.parse(localStorage.getItem(LS))||[];}catch(_){return[];}}
-function saveTofu(dev){let l=loadSaved();const id=dev.id||dev.name;if(!l.some(t=>t.id===id)){l.push({id,name:dev.name||'Tofu',added:Date.now()});try{localStorage.setItem(LS,JSON.stringify(l));}catch(_){}}}
-function forgetTofu(i){let l=loadSaved();const t=l[i];if(!t)return;
-  if(!confirm('Quên "'+(t.name||'Tofu')+'"?\n\nNhớ vào Cài đặt Bluetooth iPhone gỡ bond (Forget This Device) nữa, để nó không tự kết nối lần sau.'))return;
-  l.splice(i,1);try{localStorage.setItem(LS,JSON.stringify(l));}catch(_){}renderList();}
-function forgetAll(){if(!confirm('Quên TẤT CẢ Tofu đã lưu?\n\nNhớ gỡ bond từng cái trong Cài đặt Bluetooth iPhone nữa.'))return;
-  try{localStorage.removeItem(LS);}catch(_){}renderList();}
-function renderList(){const box=document.getElementById('tofuList');const l=loadSaved();
-  document.getElementById('btnForgetAll').style.display=l.length?'block':'none';
-  document.getElementById('forgetNote').style.display=l.length?'block':'none';
-  if(!l.length){box.innerHTML='<div class="empty">Chưa kết nối Tofu nào.<br>Bấm “Thêm Tofu mới”.</div>';return;}
-  box.innerHTML=l.map((t,i)=>`<div class="tofu-row" data-i="${i}"><span class="av">${tofuSVG('happy','#ffb27a',40)}</span>
-    <span class="rowmain" style="flex:1"><div class="nm">${escapeHtml(t.name)}</div><div class="st">Chạm để kết nối lại</div></span>
-    <button class="forget" data-f="${i}" title="Quên Tofu này">✕</button><span class="chev">↻</span></div>`).join('');
-  box.querySelectorAll('.tofu-row').forEach(el=>el.addEventListener('click',()=>reconnect(l[+el.dataset.i])));
-  box.querySelectorAll('.forget').forEach(el=>el.addEventListener('click',e=>{e.stopPropagation();forgetTofu(+el.dataset.f);}));}
+/* ======================= saved tofu list (localStorage) ======================= */
+const LS='tofuList';let demoList=null;   // demo mode keeps its fake devices here, never in localStorage
+function loadSaved(){if(demoList)return demoList.slice();try{return JSON.parse(localStorage.getItem(LS))||[];}catch(_){return[];}}
+function saveTofu(dev){if(demoList)return;let l=loadSaved();const id=dev.id||dev.name;if(!l.some(t=>t.id===id)){l.push({id,name:dev.name||'Tofu',added:Date.now()});try{localStorage.setItem(LS,JSON.stringify(l));}catch(_){}}}
+function forgetTofu(id){if(demoList){demoList=demoList.filter(t=>t.id!==id);renderList();return;}let l=loadSaved().filter(t=>t.id!==id);try{localStorage.setItem(LS,JSON.stringify(l));}catch(_){}renderList();}
+function forgetAll(){if(demoList){demoList=[];renderList();return;}if(!confirm('Forget ALL saved Tofu?\n\nAlso remove the bond in your phone\'s Bluetooth settings.'))return;try{localStorage.removeItem(LS);}catch(_){}renderList();}
+function startScreen(){return loadSaved().length?'s-home':'s-wake';}
+let selTofu=null;
+function renderList(){const box=$('tofuList');const l=loadSaved();
+  const on=t=>device&&device.gatt&&device.gatt.connected&&(device.id||device.name)===t.id;
+  const rows=l.map(t=>{const o=on(t);return {t,o};}).sort((a,b)=>b.o-a.o);
+  if(!rows.length){box.innerHTML='<div class="sh-sub" style="padding:24px 0;text-align:center">No Tofu yet. Tap “Add new”.</div>';return;}
+  box.innerHTML=rows.map(({t,o},i)=>`<button class="trow ${o||i===0?'sel':''}" data-id="${escapeHtml(t.id)}"><img class="thumb" src="assets/${o?'mascot-online':'mascot-offline'}.png" alt=""><div class="tinfo"><b>${escapeHtml(t.name)}</b><div class="stt ${o?'on':''}"><i></i><span>${o?'Online':'Offline'}</span></div></div><svg class="ic s32 chev"><use href="#i-chev-right"/></svg></button>`).join('');
+  box.querySelectorAll('.trow').forEach(el=>el.onclick=()=>openDevice(l.find(t=>t.id===el.dataset.id)));}
+function openDevice(t){if(!t)return;selTofu=t;const o=device&&device.gatt&&device.gatt.connected&&(device.id||device.name)===t.id;
+  $('devName').textContent=t.name||'Tofu';$('devImg').src='assets/'+(o?'mascot-online':'mascot-offline')+'.png';
+  $('devStt').className='stt'+(o?' on':'');$('devStt').querySelector('span').textContent=o?'Online':'Offline';ov('shDevice',true);}
 
-/* ---------- state ---------- */
-let device=null,server=null,chars={},aps=[],scanBusy=false,flowNew=false;
+/* ======================= state ======================= */
+let device=null,server=null,chars={},aps=[],scanBusy=false,flowNew=false,qrText='',demo=false,wifiSSID='';
 const enc=new TextEncoder(),dec=new TextDecoder();
-function setConn(on){document.getElementById('cdot').classList.toggle('on',on);document.getElementById('connTxt').textContent=on?(device?.name||'Đã nối'):'Chưa nối';}
-function show(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.getElementById(id).classList.add('active');
-  document.getElementById('btnBack').style.display = id==='v-list' ? 'none':'block';}
-function pill(el,t,k){el.textContent=t;el.className='pill '+k;}
 
-/* ---------- connect ---------- */
-async function addNew(){
-  if(!navigator.bluetooth){document.getElementById('warn').classList.add('show');return;}
-  try{ log('requestDevice (add new)…','sy');
-    // acceptAllDevices: hien MOI thiet bi BLE (tranh Bluefy/iOS ken bo loc namePrefix/service).
-    // optionalServices phai co SVC de sau khi connect truy cap duoc service 0x18F0.
+/* ======================= connect card ======================= */
+function connectCard(state,extra){go('s-connect');const t=$('cTitle'),s=$('cSub'),f=$('cFoot');
+  const foot=(cls,icon,txt)=>{f.className='callout-foot '+cls;f.innerHTML=`<svg class="ic s20"><use href="#${icon}"/></svg><span>${txt}</span>`;};
+  if(state==='ready'){t.textContent='Tofu found';s.textContent=extra?('Device: '+extra):'Choose your Tofu in the Bluetooth picker.';foot('ok','i-check-circle','Ready to pair via Bluetooth.');
+    btnRow($('cActions'),[{id:'cSkip',cls:'sec',txt:'Skip',fn:()=>go(startScreen())},{id:'cGo',txt:'Connect',fn:addNew}]);}
+  else if(state==='connecting'){t.textContent='Connecting...';s.textContent='Connect Tofu to Bluetooth';foot('','i-warn',"Please don't exit during connection");
+    btnRow($('cActions'),[{id:'cFinish',cls:'sec',txt:'Finish setup',dis:true}]);}
+  else if(state==='success'){t.textContent='Connected';s.textContent='Tofu connected successfully via Bluetooth.';foot('ok','i-check-green',"Let's finish Tofu setup.");
+    btnRow($('cActions'),[{id:'cFinish',txt:'Finish setup',fn:()=>go('s-start')}]);}
+  else{t.textContent='Connection Failed';s.innerHTML='Bluetooth connection failed.<br>Try again or skip and connect later in Settings.';foot('bad','i-x-red','Unable to connect Tofu to Bluetooth.');
+    btnRow($('cActions'),[{id:'cSkip',cls:'sec',txt:'Skip',fn:()=>go(startScreen())},{id:'cRetry',txt:'Try again',fn:()=>flowNew?addNew():reconnect(selTofu)}]);}
+  redraw($('s-connect'));}
+
+/* ======================= connect ======================= */
+function needBle(){if(navigator.bluetooth)return true;$('warn').hidden=false;log('No Web Bluetooth in this browser','er');return false;}
+async function addNew(){flowNew=true;if(!needBle())return;
+  try{log('requestDevice (add new)…','sy');
+    // acceptAllDevices: show every BLE device (Bluefy/iOS is picky about filters). optionalServices must include SVC.
     const dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[SVC]});
     await connectDevice(dev,true);
-  }catch(e){ log('Huỷ/lỗi: '+e.message,'er'); }
-}
-async function reconnect(saved){
-  if(!navigator.bluetooth){document.getElementById('warn').classList.add('show');return;}
-  /* Bluefy/iOS: getDevices() hay treo hoac connect khong that -> BO, dung thang
-   * picker giong Add new (da chay duoc). Nguoi dung chon lai TOFU 1 lan. */
-  try{ log('Reconnect "'+((saved&&saved.name)||'Tofu')+'": chọn thiết bị trong picker…','sy');
+  }catch(e){log('Cancel/error: '+e.message,'er');connectCard('fail');}}
+async function reconnect(saved){flowNew=false;if(saved)selTofu=saved;if(!needBle())return;
+  /* Bluefy/iOS: getDevices() hangs or connects unreliably -> use the picker again (works). */
+  try{log('Reconnect "'+((saved&&saved.name)||'Tofu')+'": pick the device…','sy');
     const dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[SVC]});
     await connectDevice(dev,false);
-  }catch(e){ log('Reconnect lỗi/huỷ: '+e.message,'er'); }
-}
+  }catch(e){log('Reconnect cancel/error: '+e.message,'er');connectCard('fail');}}
 async function connectDevice(dev,isNew){
-  device=dev; flowNew=isNew;
+  device=dev;flowNew=isNew;ov('shList',false);ov('shDevice',false);ov('shNotFound',false);
+  connectCard('connecting');
   device.addEventListener('gattserverdisconnected',onDisconnect);
   log('GATT connect '+dev.name+'…','sy');
-  server=await dev.gatt.connect();
-  const svc=await server.getPrimaryService(SVC);
-  chars={};
-  for(const [k,uuid] of Object.entries(CH)){ try{chars[k]=await svc.getCharacteristic(uuid);}catch(_){ log('thiếu char '+k,'er'); } }
-  await sub('scan',onScan); await sub('status',onStatus); await sub('tofu',onTofuStatus);
-  for(const k of ['hunger','thirst','battery']) await sub(k,e=>onNum(k,e));
-  saveTofu(dev); renderList(); setConn(true); log('Đã kết nối ✓','rx');
-  if(isNew){ show('v-wifi'); setTimeout(scan,500); }
-  else     { show('v-home'); setTimeout(requestStatus,400); }
-}
-async function sub(key,h){const c=chars[key];if(!c||!c.properties.notify)return;
-  try{await c.startNotifications();c.addEventListener('characteristicvaluechanged',h);}catch(_){log('subscribe '+key+' fail','er');}}
-function onDisconnect(){setConn(false);log('Mất kết nối','er');show('v-list');renderList();}
-
-/* ---------- quet QR (chi cho UX giong Figma; web van phai qua picker de connect) ---------- */
-let scanStream=null,scanRAF=null,qrDet=null;
-async function gotoScan(){show('v-scan');
-  document.getElementById('qrResult').style.display='none';
-  document.getElementById('qrView').style.display='';
-  document.getElementById('qrHint').textContent='Hướng camera vào mã QR trên màn hình Tofu.';
   try{
-    scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-    const v=document.getElementById('qrVideo');v.srcObject=scanStream;await v.play();
-    if('BarcodeDetector'in window){try{const fs=await window.BarcodeDetector.getSupportedFormats();
-      if(fs.includes('qr_code'))qrDet=new window.BarcodeDetector({formats:['qr_code']});}catch(_){}}
-    if(!qrDet&&!window.jsQR)log('Khong co BarcodeDetector va jsQR chua tai -> dung nut Bo qua.','er');
+    server=await dev.gatt.connect();
+    const svc=await server.getPrimaryService(SVC);chars={};
+    for(const [k,uuid] of Object.entries(CH)){try{chars[k]=await svc.getCharacteristic(uuid);}catch(_){log('missing char '+k,'er');}}
+    await sub('scan',onScan);await sub('status',onStatus);await sub('tofu',onTofuStatus);
+    for(const k of ['hunger','thirst','battery'])await sub(k,e=>onNum(k,e));
+  }catch(e){log('connect error: '+e.message,'er');connectCard('fail');return;}
+  resetLink();saveTofu(dev);renderList();$('hName').textContent=dev.name||'Tofu';log('Connected ✓','rx');
+  if(isNew){connectCard('success');}
+  else{go('s-home');setTimeout(requestStatus,400);}}
+async function sub(key,h){const c=chars[key];if(!c||!c.properties.notify)return;try{await c.startNotifications();c.addEventListener('characteristicvaluechanged',h);}catch(_){log('subscribe '+key+' fail','er');}}
+let byeByUser=false;
+function onDisconnect(e){if(e&&e.target&&e.target!==device)return;
+  log('Disconnected','er');chars={};resetLink();renderList();setSide(null);
+  if(byeByUser){byeByUser=false;return;}
+  if(cur==='s-home'||cur==='s-feed'){go('s-home');ov('shWifi',false);ov('shLog',false);ov('shNotFound',true);}
+  else if(cur!=='s-connect')go(startScreen());}
+
+/* ======================= QR scan (UX per Figma; web must still use the picker) ======================= */
+let scanStream=null,scanRAF=null,qrDet=null,camTrack=null,camCaps={},torchOn=false;
+async function gotoScan(){go('s-scan');$('qrInvalid').hidden=true;$('qrDemo').hidden=true;
+  try{const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},
+        width:{ideal:1920},height:{ideal:1080},
+        advanced:[{focusMode:'continuous'},{exposureMode:'continuous'}]}});
+    if(cur!=='s-scan'){st.getTracks().forEach(t=>t.stop());return;}
+    scanStream=st;const v=$('qrVideo');v.srcObject=scanStream;await v.play();
+    if(cur!=='s-scan'){stopScan();return;}
+    await initCam();
+    if('BarcodeDetector'in window){try{const fs=await window.BarcodeDetector.getSupportedFormats();if(fs.includes('qr_code'))qrDet=new window.BarcodeDetector({formats:['qr_code']});}catch(_){}}
+    if(!qrDet&&!window.jsQR)log('No BarcodeDetector and jsQR not loaded -> use manual pick.','er');
     scanLoop();
-  }catch(e){log('camera loi: '+e.message,'er');
-    document.getElementById('qrHint').textContent='Không mở được camera. Bấm “Bỏ qua quét → chọn thiết bị”.';}
-}
-async function scanLoop(){if(!scanStream)return;
-  const v=document.getElementById('qrVideo'),c=document.getElementById('qrCanvas');
-  if(v.videoWidth){c.width=v.videoWidth;c.height=v.videoHeight;const ctx=c.getContext('2d');
-    ctx.drawImage(v,0,0,c.width,c.height);let text=null;
+  }catch(e){log('camera error: '+e.message,'er');$('qrDemo').hidden=false;toast('Camera unavailable — choose the device manually');setTimeout(()=>{if(cur==='s-scan'){stopScan();connectCard('ready');}},1200);}}
+
+/* --- camera controls: continuous AF/AE, tap-to-focus, torch, exposure compensation --- */
+async function initCam(){
+  camTrack=scanStream.getVideoTracks()[0];
+  camCaps=camTrack.getCapabilities?(camTrack.getCapabilities()||{}):{};
+  const adv=[];
+  if(camCaps.focusMode&&camCaps.focusMode.includes('continuous'))adv.push({focusMode:'continuous'});
+  if(camCaps.exposureMode&&camCaps.exposureMode.includes('continuous'))adv.push({exposureMode:'continuous'});
+  if(adv.length){try{await camTrack.applyConstraints({advanced:adv});}catch(_){}}
+  torchOn=false;$('btnTorch').classList.remove('on');$('btnTorch').hidden=!camCaps.torch;
+  const ec=camCaps.exposureCompensation;
+  if(ec){const sl=$('expSlider');sl.min=ec.min;sl.max=ec.max;sl.step=ec.step||((ec.max-ec.min)/20||0.1);
+    sl.value=(camTrack.getSettings&&camTrack.getSettings().exposureCompensation)||0;$('expWrap').hidden=false;}
+  else $('expWrap').hidden=true;
+  $('camHint').hidden=!(camCaps.pointsOfInterest||camCaps.focusMode);
+  log('camera: '+(camCaps.focusMode?('focus['+camCaps.focusMode.join('/')+'] '):'no focus ctl ')
+      +(camCaps.torch?'torch ':'')+(ec?'exposure':''),'sy');}
+function videoBox(){const v=$('qrVideo');if(!v.videoWidth)return null;
+  const r=v.getBoundingClientRect(),sc=Math.max(r.width/v.videoWidth,r.height/v.videoHeight);
+  return {v,r,sc,ox:r.left+(r.width-v.videoWidth*sc)/2,oy:r.top+(r.height-v.videoHeight*sc)/2};}
+async function focusAt(cx,cy){
+  const ring=$('focusRing'),sr=$('s-scan').getBoundingClientRect();
+  ring.hidden=true;void ring.offsetWidth;                      // restart the pop animation
+  ring.style.left=(cx-sr.left)+'px';ring.style.top=(cy-sr.top)+'px';ring.hidden=false;
+  clearTimeout(focusAt.hide);focusAt.hide=setTimeout(()=>{ring.hidden=true;},1400);
+  const b=videoBox();if(!b||!camTrack)return;
+  const x=Math.min(1,Math.max(0,(cx-b.ox)/(b.v.videoWidth*b.sc)));
+  const y=Math.min(1,Math.max(0,(cy-b.oy)/(b.v.videoHeight*b.sc)));
+  const adv=[];
+  if(camCaps.pointsOfInterest)adv.push({pointsOfInterest:[{x,y}]});
+  if(camCaps.focusMode&&camCaps.focusMode.includes('single-shot'))adv.push({focusMode:'single-shot'});
+  else if(camCaps.focusMode&&camCaps.focusMode.includes('manual'))adv.push({focusMode:'manual'});
+  if(camCaps.exposureMode&&camCaps.exposureMode.includes('continuous'))adv.push({exposureMode:'continuous'});
+  if(!adv.length){log('camera has no focus control','sy');return;}
+  try{await camTrack.applyConstraints({advanced:adv});log('focus @ '+x.toFixed(2)+','+y.toFixed(2),'sy');}
+  catch(e){log('focus failed: '+e.message,'er');}
+  clearTimeout(focusAt.back);                                   // hand control back to continuous AF
+  focusAt.back=setTimeout(()=>{if(camTrack&&camCaps.focusMode&&camCaps.focusMode.includes('continuous'))
+    camTrack.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});},4000);}
+/* decode only the viewfinder area: a bright background can no longer wash out the code */
+function cropRect(v){const b=videoBox();if(!b)return null;
+  const f=$('qrMask').getBoundingClientRect(),pad=.12;
+  let sx=(f.left-b.ox)/b.sc,sy=(f.top-b.oy)/b.sc,sw=f.width/b.sc,sh=f.height/b.sc;
+  sx-=sw*pad;sy-=sh*pad;sw*=1+2*pad;sh*=1+2*pad;
+  sx=Math.max(0,sx);sy=Math.max(0,sy);
+  sw=Math.min(sw,v.videoWidth-sx);sh=Math.min(sh,v.videoHeight-sy);
+  return sw>16&&sh>16?{sx,sy,sw,sh}:null;}
+function boostContrast(d){                                      // stretch luma: rescues glare / over-exposed frames
+  let lo=255,hi=0;
+  for(let i=0;i<d.length;i+=28){const y=(d[i]*299+d[i+1]*587+d[i+2]*114)/1000;if(y<lo)lo=y;if(y>hi)hi=y;}  // stride 7px: never aliases onto the QR grid
+  if(hi-lo<10)return false;
+  const a=255/(hi-lo);
+  for(let i=0;i<d.length;i+=4){const y=(d[i]*299+d[i+1]*587+d[i+2]*114)/1000;
+    const n=y<=lo?0:y>=hi?255:(y-lo)*a;d[i]=d[i+1]=d[i+2]=n;}
+  return true;}
+async function scanLoop(){if(!scanStream)return;const v=$('qrVideo'),c=$('qrCanvas');
+  if(v.videoWidth){
+    const r=cropRect(v)||{sx:0,sy:0,sw:v.videoWidth,sh:v.videoHeight};
+    const w=Math.min(720,Math.round(r.sw));
+    c.width=w;c.height=Math.max(1,Math.round(w*r.sh/r.sw));
+    const ctx=c.getContext('2d',{willReadFrequently:true});
+    ctx.drawImage(v,r.sx,r.sy,r.sw,r.sh,0,0,c.width,c.height);
+    let text=null;
     if(qrDet){try{const codes=await qrDet.detect(c);if(codes.length)text=codes[0].rawValue;}catch(_){}}
-    else if(window.jsQR){const img=ctx.getImageData(0,0,c.width,c.height);const r=jsQR(img.data,img.width,img.height);if(r)text=r.data;}
+    if(!text&&window.jsQR){const img=ctx.getImageData(0,0,c.width,c.height);
+      let q=jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
+      if(!q&&boostContrast(img.data))q=jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
+      if(q)text=q.data;}
     if(text){onQR(text);return;}}
-  scanRAF=requestAnimationFrame(scanLoop);
-}
+  scanRAF=requestAnimationFrame(scanLoop);}
 function stopScan(){if(scanRAF)cancelAnimationFrame(scanRAF);scanRAF=null;
+  clearTimeout(focusAt.back);clearTimeout(focusAt.hide);$('focusRing').hidden=true;
+  if(camTrack&&torchOn){try{camTrack.applyConstraints({advanced:[{torch:false}]});}catch(_){}}
+  torchOn=false;$('btnTorch').classList.remove('on');camTrack=null;camCaps={};
   if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}}
-function onQR(text){stopScan();log('QR = '+text,'rx');
-  document.getElementById('qrView').style.display='none';
-  document.getElementById('qrResult').style.display='';
-  document.getElementById('qrMac').textContent=text;}
+function onQR(text){log('QR = '+text,'rx');
+  if(!/^[\s\S]{2,}$/.test(text)){qrInvalid();scanRAF=requestAnimationFrame(scanLoop);return;}
+  stopScan();qrText=text;connectCard('ready',text);}
+function qrInvalid(){$('qrInvalid').hidden=false;clearTimeout(qrInvalid.t);qrInvalid.t=setTimeout(()=>{$('qrInvalid').hidden=true;},2500);}
 
-/* ---------- write ---------- */
-async function writeCred(s){if(!chars.cred){log('no cred char','er');return;}log('TX cred: "'+s+'"','tx');await chars.cred.writeValue(enc.encode(s));}
-async function writeStr(k,s){if(!chars[k]){log('no char '+k,'er');return;}log('TX '+k+': "'+s+'"','tx');await chars[k].writeValue(enc.encode(s));}
+/* ======================= write ======================= */
+async function writeCred(s){if(!chars.cred){log('no cred char (not connected)','er');throw new Error('not connected');}log('TX cred: "'+s+'"','tx');await chars.cred.writeValue(enc.encode(s));}
+async function writeStr(k,s){if(!chars[k]){log('no char '+k+' (not connected)','er');throw new Error('not connected');}log('TX '+k+': "'+s+'"','tx');await chars[k].writeValue(enc.encode(s));}
+function resetLink(){scanBusy=false;aps=[];pendingSsid='';tofuBuf='';}
 
-/* ---------- scan ---------- */
-async function scan(){if(scanBusy)return;scanBusy=true;aps=[];renderAPs();
-  pill(document.getElementById('wifiPill'),'Đang quét…','wait');
-  document.getElementById('wifiHint').textContent='Đang tìm mạng quanh Tofu…';
-  try{await writeCred('SCAN');}catch(e){log('scan fail','er');scanBusy=false;}}
+/* ======================= wifi scan / list ======================= */
+function wifiState(st,ssid){ /* searching | list | connecting | success */
+  $('wifiSearching').hidden=st!=='searching';$('wifiList').hidden=st==='searching';$('wifiSel').hidden=!(st==='connecting'||st==='success');
+  $('wifiList').classList.toggle('dim',st==='connecting');
+  $('wifiEscape').hidden=!(st==='list'&&!scanBusy&&!aps.length);
+  $('wifiSel2').hidden=$('wifiSel').hidden;$('wifiSelName2').textContent=$('wifiSelName').textContent;
+  if(ssid!==undefined){$('wifiSelName').textContent=ssid;}
+  const use=`<use href="#${st==='success'?'i-check-green':'i-loader'}"/>`;
+  for(const id of ['wifiSelIc','wifiSelIc2']){const ic=$(id);ic.className='ic s16'+(st==='connecting'?' spin':'');ic.innerHTML=use;}
+  $('wifiSearching2').hidden=st!=='searching';$('wifiList2').hidden=st==='searching';
+  renderAPs();}
+async function scan(){if(scanBusy)return;scanBusy=true;aps=[];wifiState('searching');
+  try{await writeCred('SCAN');}catch(e){log('scan fail: '+e.message,'er');scanBusy=false;wifiState('list');toast('Not connected to Tofu');}}
 function onScan(e){const t=dec.decode(e.target.value);log('RX scan: '+t,'rx');
-  try{const ap=JSON.parse(t);if(ap.ssid&&!aps.some(a=>a.ssid===ap.ssid&&a.rssi===ap.rssi)){aps.push(ap);renderAPs();}}catch(_){}}
-function renderAPs(){const box=document.getElementById('apList');
-  if(!aps.length){box.innerHTML=scanBusy?'<div class="empty">Đang quét…</div>':'<div class="empty">Chưa có mạng.</div>';return;}
-  const s=[...aps].sort((a,b)=>(b.rssi||-99)-(a.rssi||-99));
-  box.innerHTML=s.map(ap=>{const lv=ap.rssi>=-55?4:ap.rssi>=-65?3:ap.rssi>=-75?2:1;
-    const bars=[6,9,12,15].map((h,i)=>`<i style="height:${i<lv?h:4}px;opacity:${i<lv?1:.35}"></i>`).join('');
-    const lock=(ap.auth&&ap.auth!=='OPEN')?'🔒':'';
-    return `<div class="ap" data-ssid="${encodeURIComponent(ap.ssid)}" data-open="${ap.auth==='OPEN'?1:0}"><span class="nm">${escapeHtml(ap.ssid)}</span><span class="meta">${lock}<span class="bars">${bars}</span></span></div>`;}).join('');
-  box.querySelectorAll('.ap').forEach(el=>el.addEventListener('click',()=>openPw(decodeURIComponent(el.dataset.ssid),el.dataset.open==='1')));}
+  try{const ap=JSON.parse(t);if(ap.ssid&&!aps.some(a=>a.ssid===ap.ssid)){aps.push(ap);if(!scanBusy||aps.length===1)wifiState('list');else renderAPs();}}catch(_){}}
+let pendingSsid='';
+function renderAPs(){const s=[...aps].sort((a,b)=>(b.rssi||-99)-(a.rssi||-99)).filter(a=>a.ssid!==pendingSsid||!$('wifiSel')||$('wifiSel').hidden);
+  const html=s.length?s.map(ap=>{const weak=(ap.rssi||-99)<-75;const lock=(ap.auth&&ap.auth!=='OPEN')?'<svg class="ic s16"><use href="#i-lock"/></svg>':'';
+    return `<button class="wrow" data-ssid="${encodeURIComponent(ap.ssid)}" data-open="${ap.auth==='OPEN'?1:0}"><span class="nm">${escapeHtml(ap.ssid)}</span><span class="st">${lock}<svg class="ic s16"><use href="#${weak?'i-wifi1':'i-wifi'}"/></svg></span></button>`;}).join('')
+    :(scanBusy?'':'<div class="wrow hint">No networks found. Rescan?</div>');
+  for(const id of ['apList','apList2']){const box=$(id);box.innerHTML=html;box.querySelectorAll('.wrow[data-ssid]').forEach(el=>el.onclick=()=>openPw(decodeURIComponent(el.dataset.ssid),el.dataset.open==='1'));}}
+function wifiModal(title,sub,btn,fn){$('wifiModalTitle').textContent=title;$('wifiModalSub').textContent=sub;$('wifiModalBtn').querySelector('span').textContent=btn;$('wifiModalBtn').onclick=fn;ov('wifiModal',true);}
 
-/* ---------- status handler ---------- */
+/* ======================= status handler ======================= */
 function onStatus(e){const s=dec.decode(e.target.value).trim();log('RX status: '+s,'rx');
-  const p=document.getElementById('wifiPill');
-  if(s==='WIFI_SCAN_OK'){scanBusy=false;pill(p,aps.length+' mạng','ok');
-    document.getElementById('wifiHint').textContent='Chọn 1 mạng để nhập mật khẩu.';
-    if(!aps.length)document.getElementById('apList').innerHTML='<div class="empty">Không tìm thấy mạng. Quét lại?</div>';}
-  else if(s==='WIFI_OK'){pill(p,'✓ Đã nối WiFi','ok');
-    connOk(()=>{ if(flowNew){ gotoActivate(); } else { show('v-home'); requestStatus(); } }); }
-  else if(s==='WIFI_FAIL'){scanBusy=false;pill(p,'✗ Thất bại','bad');connFail();
-    document.getElementById('wifiHint').textContent='Sai mật khẩu hoặc không thấy mạng. Thử lại.';}
-  else if(s==='WIFI_DISCONNECT'){pill(p,'Mất kết nối','bad');}
-  else if(s.indexOf('ACTIVATION_CODE:')===0){ showActCode(s.slice(16).trim()); }
-  else if(s==='ACTIVATED'||s==='REGISTER_SUCCESS'){ onActivated(); }
-  else if(s==='PAIRING_MODE'){ log('Đang ở chế độ pair','sy'); }
-}
+  if(s==='WIFI_SCAN_OK'){scanBusy=false;wifiState('list');
+    if(!aps.length&&cur==='s-wifi')wifiModal('No Wi-Fi Networks Found','Make sure Wi-Fi is turned on and try again.','Retry',()=>{ov('wifiModal',false);scan();});}
+  else if(s==='WIFI_OK'){wifiState('success',pendingSsid);
+    const onboarding=flowNew&&cur==='s-wifi';
+    setTimeout(()=>{if(onboarding){gotoSetup();}else{ov('shWifi',false);requestStatus();toast('Wi-Fi connected');}},900);}
+  else if(s==='WIFI_FAIL'){scanBusy=false;wifiState('list');
+    if(cur==='s-wifi')wifiModal('Connection Failed','Wrong password or network not found. Try again.','Try again',()=>ov('wifiModal',false));else toast('Wi-Fi connection failed');}
+  else if(s==='WIFI_DISCONNECT'){setWifiState('',0);toast('Wi-Fi disconnected');}
+  else if(s.indexOf('ACTIVATION_CODE:')===0){showActCode(s.slice(16).trim());}
+  else if(s==='ACTIVATED'||s==='REGISTER_SUCCESS'){onActivated();}
+  else if(s==='PAIRING_MODE'){log('Pairing mode','sy');}}
 
-/* ---------- activation ---------- */
-function gotoActivate(){show('v-activate');
-  document.getElementById('actTitle').textContent='Đang kết nối server…';
-  document.getElementById('actSub').style.display='';
-  document.getElementById('codeBox').style.display='none';
-  pill(document.getElementById('actPill'),'Chờ mã…','wait');}
-function showActCode(code){show('v-activate');
-  document.getElementById('actTitle').textContent='Kích hoạt thủ công';
-  document.getElementById('actSub').style.display='none';
-  document.getElementById('codeBox').style.display='';
-  document.getElementById('actCode').textContent=code;
-  pill(document.getElementById('actPill'),'Chờ kích hoạt trên server…','wait');
-  log('ACTIVATION CODE = '+code,'rx');}
-function onActivated(){pill(document.getElementById('actPill'),'✓ Đã kích hoạt','ok');
-  document.getElementById('actTitle').textContent='Kích hoạt thành công!';
-  log('ACTIVATED ✓','rx'); setTimeout(()=>{show('v-home');requestStatus();},900);}
+/* ======================= setup / activation ======================= */
+function gotoSetup(){go('s-setup');$('chk3').className='';$('chk3').innerHTML='<svg class="ic s12 spin"><use href="#i-loader"/></svg><span>Syncing Digital Tofu...</span>';$('codeBox').hidden=true;redraw($('s-setup'));}
+function showActCode(code){if(cur!=='s-setup')go('s-setup');$('codeBox').hidden=false;$('actCode').textContent=code;
+  $('chk3').innerHTML='<svg class="ic s12 spin"><use href="#i-loader"/></svg><span>Waiting for activation on server...</span>';log('ACTIVATION CODE = '+code,'rx');redraw($('s-setup'));}
+function onActivated(){flowNew=false;$('chk3').className='ok';$('chk3').innerHTML='<svg class="ic s12"><use href="#i-check-green"/></svg><span>Digital Tofu synced</span>';log('ACTIVATED ✓','rx');
+  setTimeout(()=>{if(cur==='s-setup')go('s-ready');},900);}
 
-/* ---------- password / connect wifi ---------- */
+/* ======================= password / connect wifi ======================= */
 let pwSsid='';
-function openPw(ssid,isOpen){pwSsid=ssid;document.getElementById('pwSsid').textContent=ssid+(isOpen?' (mạng mở)':'');
-  document.getElementById('pwInput').value='';document.getElementById('pwModal').classList.add('show');if(!isOpen)document.getElementById('pwInput').focus();}
-function closePw(){document.getElementById('pwModal').classList.remove('show');}
-async function doConnectWifi(){const pass=document.getElementById('pwInput').value;
-  pill(document.getElementById('wifiPill'),'Đang nối…','wait');
-  showConn(pwSsid);                       // dong sheet + hien overlay dang ket noi
-  await writeCred(pwSsid+'/'+pass);}
-function showConn(ssid){closePw();
-  const ic=document.getElementById('connIcon');ic.textContent='🔄';ic.classList.add('spin');
-  document.getElementById('connTitle').textContent='Đang kết nối…';
-  document.getElementById('connMsg').textContent='“'+ssid+'”';
-  document.getElementById('connBtn').style.display='none';
-  document.getElementById('connModal').classList.add('show');}
-function connOk(cb){const ic=document.getElementById('connIcon');ic.textContent='✅';ic.classList.remove('spin');
-  document.getElementById('connTitle').textContent='Đã kết nối WiFi!';document.getElementById('connMsg').textContent='';
-  setTimeout(()=>{document.getElementById('connModal').classList.remove('show');if(cb)cb();},1000);}
-function connFail(){const ic=document.getElementById('connIcon');ic.textContent='❌';ic.classList.remove('spin');
-  document.getElementById('connTitle').textContent='Kết nối thất bại';
-  document.getElementById('connMsg').textContent='Sai mật khẩu hoặc không thấy mạng. Thử mạng khác nhé.';
-  document.getElementById('connBtn').style.display='block';}
+function openPw(ssid,isOpen){pwSsid=ssid;if(isOpen){doConnectWifi('');return;}
+  $('pwSsid').value=ssid;$('pwInput').value='';$('pwInput').type='password';ov('shPw',true);setTimeout(()=>$('pwInput').focus(),50);}
+function closePw(){ov('shPw',false);}
+async function doConnectWifi(pass){closePw();pendingSsid=pwSsid;wifiState('connecting',pwSsid);
+  try{await writeCred(pwSsid+'/'+pass);}catch(e){log('write fail: '+e.message,'er');pendingSsid='';wifiState('list');toast('Not connected to Tofu');}}
 
-/* ---------- home status ---------- */
-async function requestStatus(){try{await writeCred('STATUS');}catch(_){}
-  for(const k of ['hunger','thirst','battery']) readNum(k);}
+/* ======================= home status ======================= */
+async function requestStatus(){try{await writeCred('STATUS');}catch(_){}for(const k of ['hunger','thirst','battery'])readNum(k);}
 async function readNum(key){const c=chars[key];if(!c||!c.properties.read)return;try{const v=await c.readValue();onNum(key,{target:{value:v}});}catch(_){}}
-function onNum(key,e){const v=e.target.value;let n=null;
-  if(v.byteLength>=4)n=v.getFloat32(0,true);
-  if(n===null||isNaN(n)||n<0||n>1000)n=v.getUint8(0);
-  setBar(key,n);}
-/* gauge phan doan (giong Figma: 10 khoi nhu pin) */
-const SEG=10;
-function renderGauge(el,pct,color){if(!el)return;pct=Math.max(0,Math.min(100,pct||0));const on=Math.round(pct/100*SEG);
-  let h='';for(let i=0;i<SEG;i++)h+=`<i style="background:${i<on?color:'#eadfd8'}"></i>`;el.innerHTML=h;}
-const STATC={hunger:['bFeed','vFeed','#E8531A'],thirst:['bDrink','vDrink','#2f9fd0'],battery:['bBat','vBat','#2f9e5f']};
+function onNum(key,e){const v=e.target.value;let n=null;if(v.byteLength>=4)n=v.getFloat32(0,true);if(n===null||isNaN(n)||n<0||n>1000)n=v.getUint8(0);setBar(key,n);}
+const SEG=5;
+function renderGauge(el,pct){if(!el)return;pct=Math.max(0,Math.min(100,pct||0));const on=pct<=0?0:Math.max(1,Math.round(pct/100*SEG));
+  [...el.children].forEach((c,i)=>c.classList.toggle('on',i<on));}
+const STATC={hunger:['gFeed','vFeed','mgFeed','mvFeed'],thirst:['gDrink','vDrink','mgDrink','mvDrink'],battery:['gBat','vBat'],bonding:['gBond','vBond']};
 function setBar(key,n){n=Math.max(0,Math.min(100,Math.round(n)));const m=STATC[key];if(!m)return;
-  renderGauge(document.getElementById(m[0]),n,m[2]);document.getElementById(m[1]).textContent=n+'%';}
-function setBond(n){n=Math.max(0,Math.min(100,Math.round(n)));renderGauge(document.getElementById('bBond'),n,'#c04ea0');document.getElementById('vBond').textContent=n+'%';}
-function initHomeGauges(){for(const k in STATC)renderGauge(document.getElementById(STATC[k][0]),0,STATC[k][2]);
-  renderGauge(document.getElementById('gXp'),0,'#f2b01e');renderGauge(document.getElementById('bBond'),0,'#c04ea0');}
-function onTofuStatus(e){const t=dec.decode(e.target.value);log('RX tofu: '+t,'rx');
-  try{const j=JSON.parse(t);
-    if(j.name)document.getElementById('hNm').textContent=j.name;
-    if('hunger'in j)setBar('hunger',j.hunger);if('thirst'in j)setBar('thirst',j.thirst);if('battery'in j)setBar('battery',j.battery);
-    /* level/xp/beans/bonding: firmware CHUA bao qua BLE -> hien neu co, khong thi giu placeholder */
-    if('level'in j)document.getElementById('hLv').textContent='Level '+j.level;
-    if('xp'in j){const mx=j.xpMax||500;renderGauge(document.getElementById('gXp'),j.xp/mx*100,'#f2b01e');document.getElementById('hXp').textContent=(j.xp||0)+' / '+mx+' XP';}
-    if('beans'in j)document.getElementById('hBeans').textContent=(j.beans||0)+' beans';
-    if('bonding'in j)setBond(j.bonding);
-    document.getElementById('hWifi').textContent=j.wifiSSID?('📶 '+j.wifiSSID+' · '+(j.wifiSignal||0)+'%'):'Chưa nối WiFi';}catch(_){}}
+  renderGauge($(m[0]),n);$(m[1]).textContent=n+'%';if(m[2]){renderGauge($(m[2]),n);$(m[3]).textContent=n+'%';}
+  if(key==='battery')setSide(n);}
+function setSide(batt){const cells=[...$('battCells').children];const on=batt==null?0:Math.max(batt>0?1:0,Math.round(batt/100*cells.length));
+  cells.forEach((c,i)=>c.classList.toggle('on',i>=cells.length-on));}
+function setLevel(lv,xp,xpMax){$('hLevel').textContent=lv;$('hLv1').textContent=lv;$('hXp').textContent=xp;$('hXpMax').textContent=xpMax;$('lvBar').dataset.pct=xpMax?xp/xpMax*100:0;drawShape($('lvBar'));}
+let tofuBuf='';const tofuDec=new TextDecoder();
+function onTofuStatus(e){const t=tofuDec.decode(e.target.value,{stream:true});log('RX tofu: '+t,'rx');
+  if(t.trimStart().startsWith('{'))tofuBuf='';           // new message starts -> drop a half-received one
+  tofuBuf+=t;let j=null;
+  try{j=JSON.parse(tofuBuf);}catch(_){if(tofuBuf.length>2048||!tofuBuf.trim().startsWith('{'))tofuBuf='';return;}
+  tofuBuf='';applyStatus(j);}
+function applyStatus(j){
+  if(j.name)$('hName').textContent=j.name;
+  if('hunger'in j)setBar('hunger',j.hunger);if('thirst'in j)setBar('thirst',j.thirst);if('battery'in j)setBar('battery',j.battery);
+  /* level/xp/beans/bonding/mood: firmware may not send them yet -> show when present */
+  if('level'in j||'xp'in j)setLevel(j.level||1,j.xp||0,j.xpMax||500);
+  if('beans'in j)$('hBeans').textContent=j.beans||0;
+  if('bonding'in j)setBar('bonding',j.bonding);
+  if(j.mood)$('hMood').textContent=j.mood;
+  if('wifiSSID'in j||'wifiSignal'in j)setWifiState(j.wifiSSID,j.wifiSignal);}
+function setWifiState(ssid,signal){wifiSSID=ssid||'';
+  $('sideState').classList.toggle('nowifi',!wifiSSID);
+  $('sideState').title=wifiSSID?(wifiSSID+' \u00b7 '+(signal||0)+'%'):'No Wi-Fi';}
 
-/* ---------- misc ---------- */
-function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function goBack(){ stopScan();
-  if(document.getElementById('v-home').classList.contains('active')){show('v-wifi');}
-  else show('v-list'); }
+/* ======================= feed ======================= */
+let feedKind='feed',feedQty=1;
+function openAdjust(kind){feedKind=kind;feedQty=1;$('amounts').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.n==='1'));
+  const im=$('adjIcon');if(im&&im.tagName==='IMG')im.src=kind==='feed'?'assets/icons/chicken.png':'assets/icons/water.png';
+  $('adjust').hidden=false;redraw($('adjust'));}
+$('amounts').onclick=e=>{const b=e.target.closest('button');if(!b)return;feedQty=+b.dataset.n;$('amounts').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));};
+$('adjNo').onclick=()=>$('adjust').hidden=true;
+$('adjYes').onclick=()=>{$('adjust').hidden=true;writeStr(feedKind,String(feedQty)).then(()=>{toast(feedKind==='feed'?'Feed successfully!':'Drink successfully!');setTimeout(requestStatus,600);}).catch(e=>{log('write fail '+e.message,'er');toast('Not connected to Tofu');});};
+/* drag & drop item -> mascot */
+(function(){let ghost=null,kind='',sx=0,sy=0,moved=false;const stage=$('s-feed'),m=$('feedMascot');
+  $('items').addEventListener('pointerdown',e=>{const it=e.target.closest('.item');if(!it)return;kind=it.dataset.kind;sx=e.clientX;sy=e.clientY;moved=false;
+    ghost=document.createElement('div');ghost.className='dragghost';const img=it.querySelector('img,.emoji');ghost.appendChild(img.cloneNode(true));stage.appendChild(ghost);mv(e);it.setPointerCapture(e.pointerId);});
+  function mv(e){if(!ghost)return;const r=stage.getBoundingClientRect();ghost.style.left=(e.clientX-r.left-22)+'px';ghost.style.top=(e.clientY-r.top-22)+'px';
+    if(Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)>6)moved=true;const mr=m.getBoundingClientRect();m.classList.toggle('hot',e.clientX>mr.left&&e.clientX<mr.right&&e.clientY>mr.top&&e.clientY<mr.bottom);}
+  document.addEventListener('pointermove',mv);
+  document.addEventListener('pointerup',e=>{if(!ghost)return;const over=m.classList.contains('hot');ghost.remove();ghost=null;m.classList.remove('hot');if(over||!moved)openAdjust(kind);});})();
 
-/* ---------- wire ---------- */
-document.getElementById('btnAddNew').onclick=gotoScan;
-document.getElementById('btnForgetAll').onclick=forgetAll;
-document.getElementById('btnScanConnect').onclick=addNew;        // user-gesture -> picker (bat buoc)
-document.getElementById('btnScanSkip').onclick=()=>{stopScan();addNew();};
-document.getElementById('btnBack').onclick=goBack;
-document.getElementById('btnRescan').onclick=scan;
-document.getElementById('btnSkipAct').onclick=()=>{show('v-list');renderList();};
-document.getElementById('btnWifi2').onclick=()=>show('v-wifi');
-document.getElementById('btnRefresh').onclick=requestStatus;
-let feedQty=1;
-function setQty(n){feedQty=Math.max(1,Math.min(10,n));document.getElementById('qtyVal').textContent=feedQty;}
-document.getElementById('qtyMinus').onclick=()=>setQty(feedQty-1);
-document.getElementById('qtyPlus').onclick=()=>setQty(feedQty+1);
-document.getElementById('btnFeed').onclick=()=>writeStr('feed',String(feedQty)).then(()=>setTimeout(requestStatus,600));
-document.getElementById('btnDrink').onclick=()=>writeStr('drink',String(feedQty)).then(()=>setTimeout(requestStatus,600));
-document.getElementById('pwCancel').onclick=closePw;
-document.getElementById('pwConnect').onclick=doConnectWifi;
-document.getElementById('connBtn').onclick=()=>document.getElementById('connModal').classList.remove('show');
-document.getElementById('pwEye').onclick=()=>{const i=document.getElementById('pwInput');i.type=i.type==='password'?'text':'password';};
+/* ======================= wiring ======================= */
+$('btnScanQR').onclick=gotoScan;
+$('s-scan').addEventListener('pointerdown',e=>{           // tap anywhere on the preview to focus + re-meter
+  if(e.target.closest('button')||e.target.closest('.qr-invalid')||e.target.closest('.exp'))return;
+  focusAt(e.clientX,e.clientY);});
+$('btnTorch').onclick=async()=>{if(!camTrack)return;const want=!torchOn;
+  try{await camTrack.applyConstraints({advanced:[{torch:want}]});torchOn=want;$('btnTorch').classList.toggle('on',want);}
+  catch(e){log('torch failed: '+e.message,'er');toast('Flashlight not available');}};
+$('expSlider').oninput=e=>{if(!camTrack)return;
+  camTrack.applyConstraints({advanced:[{exposureCompensation:+e.target.value}]}).catch(()=>{});};
+$('btnSkipQR').onclick=()=>connectCard('ready');
+$('btnScanBack').onclick=()=>{stopScan();back();};
+$('btnStartWifi').onclick=()=>{go('s-wifi');setTimeout(scan,300);};
+$('btnWifiRescan').onclick=scan;
+$('btnWifiBack').onclick=()=>{ov('wifiModal',false);back();};
+$('btnWifiSkip').onclick=()=>{ov('wifiModal',false);flowNew?gotoSetup():go('s-home');};
+$('wifiModalX').onclick=()=>ov('wifiModal',false);
+$('btnSkipSetup').onclick=()=>{go('s-home');requestStatus();};
+$('btnMeet').onclick=()=>{go('s-home');requestStatus();};
+$('btnTofuMenu').onclick=()=>{renderList();ov('shList',true);};
+$('btnBell').onclick=()=>toast('No notifications');
+$('btnMenu').onclick=()=>ov('shLog',true);
+$('btnLogClose').onclick=()=>ov('shLog',false);
+$('sideState').onclick=()=>{ov('shWifi',true);scan();};
+$('btnWifi2Close').onclick=()=>ov('shWifi',false);
+$('btnWifi2Rescan').onclick=scan;
+$('btnChangeWifi').onclick=()=>{ov('shLog',false);ov('shWifi',true);scan();};
+$('btnRefresh').onclick=requestStatus;
+$('btnForgetAll').onclick=forgetAll;
+$('btnAddNew').onclick=()=>{ov('shList',false);go('s-wake');};
+$('btnUnpair').onclick=()=>ov('mdUnpair',true);
+$('unpairX').onclick=$('unpairCancel').onclick=()=>ov('mdUnpair',false);
+$('unpairConfirm').onclick=()=>{ov('mdUnpair',false);ov('shDevice',false);if(selTofu){forgetTofu(selTofu.id);toast('Unpair successful');}
+  if(device&&device.gatt&&device.gatt.connected&&selTofu&&(device.id||device.name)===selTofu.id){byeByUser=true;try{device.gatt.disconnect();}catch(_){}}
+  if(!loadSaved().length)setTimeout(()=>go('s-wake'),600);};
+$('btnReconnect').onclick=()=>{ov('shDevice',false);reconnect(selTofu);};
+$('btnNfSkip').onclick=()=>{ov('shNotFound',false);renderList();ov('shList',true);};
+$('btnNfReconnect').onclick=()=>{ov('shNotFound',false);reconnect(loadSaved().find(t=>device&&t.id===(device.id||device.name))||loadSaved()[0]);};
+$('btnFeedScreen').onclick=()=>{go('s-feed');$('adjust').hidden=true;};
+$('btnFeedBack').onclick=()=>{$('adjust').hidden=true;go('s-home');};
+$('pwCancel').onclick=closePw;
+$('pwConnect').onclick=()=>doConnectWifi($('pwInput').value);
+$('pwEye').onclick=()=>{const i=$('pwInput');i.type=i.type==='password'?'text':'password';};
+$('pwInput').addEventListener('keydown',e=>{if(e.key==='Enter')doConnectWifi($('pwInput').value);});
+document.querySelectorAll('.sheet-ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o&&o.id!=='shNotFound')o.hidden=true;}));
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));if(t!==document.querySelector('.tab'))toast('Coming soon');});
 
-if(!navigator.bluetooth)document.getElementById('warn').classList.add('show');
-renderList();
-initHomeGauges();
-log('Sẵn sàng. Có Tofu -> Reconnect; chưa -> Thêm Tofu mới.','sy');
+/* ======================= demo mode (screenshots / Figma compare) ======================= */
+(function(){const q=new URLSearchParams(location.search);if(q.get('frame')==='1')document.documentElement.classList.add('frame');
+  if(q.get('w')){$('app').style.width=$('app').style.maxWidth=q.get('w')+'px';$('app').style.margin='0';}
+  const d=q.get('demo');if(!d)return;demo=true;const [scr,st]=d.split('.');
+  const DEMO_APS=[{ssid:"Tofu’s Wifi",rssi:-50,auth:'OPEN'},{ssid:'AraiCoffee',rssi:-60,auth:'WPA2'},{ssid:'Freewifi',rssi:-70,auth:'OPEN'},{ssid:'Homewifi',rssi:-82,auth:'OPEN'}];
+  const DEMO_LIST=[{id:'a',name:'Tofu'},{id:'b',name:'Loona'},{id:'c',name:'Sifu'},{id:'d',name:'Sofa'}];
+  demoList=DEMO_LIST.slice();   // never touch the real localStorage
+  device={id:'a',name:'Tofu',gatt:{connected:true}};
+  applyStatus({name:'Alex',hunger:15,thirst:15,battery:15,bonding:15,level:10,xp:150,xpMax:500,beans:32242});
+  setBar('hunger',scr==='feed'?40:15);setBar('thirst',scr==='feed'?20:15);
+  const S={
+    wake:()=>go('s-wake'),
+    scan:()=>{go('s-scan');$('qrDemo').hidden=false;},
+    scanfail:()=>{go('s-scan');$('qrDemo').hidden=false;$('qrInvalid').hidden=false;},
+    connect:()=>connectCard(st||'connecting',st==='ready'?'AA:BB:CC:DD:EE:FF':undefined),
+    start:()=>go('s-start'),
+    wifi:()=>{go('s-wifi');aps=DEMO_APS.slice();
+      if(st==='searching'){aps=[];wifiState('searching');}
+      else if(st==='connecting'){pendingSsid="Tofu’s Wifi";wifiState('connecting',"Tofu’s Wifi");}
+      else if(st==='success'){pendingSsid="Tofu’s Wifi";wifiState('success',"Tofu’s Wifi");}
+      else if(st==='notfound'){aps=[];scanBusy=false;wifiState('searching');wifiModal('No Wi-Fi Networks Found','Make sure Wi-Fi is turned on and try again.','Retry',()=>ov('wifiModal',false));}
+      else if(st==='pw'){wifiState('list');pwSsid='ASUS_84_5G';$('pwSsid').value='ASUS_84_5G';$('pwInput').value='password1';ov('shPw',true);}
+      else wifiState('list');},
+    setup:()=>{gotoSetup();if(st==='code')showActCode('189790');},
+    ready:()=>go('s-ready'),
+    home:()=>{go('s-home');renderList();
+      if(st==='list')ov('shList',true);else if(st==='device'){openDevice(DEMO_LIST[0]);}
+      else if(st==='unpair'){openDevice(DEMO_LIST[2]);ov('mdUnpair',true);}
+      else if(st==='wifi'){aps=DEMO_APS.slice();ov('shWifi',true);wifiState('list');}
+      else if(st==='notfound')ov('shNotFound',true);else if(st==='log'){log('demo log line','sy');ov('shLog',true);}},
+    feed:()=>{go('s-feed');if(st==='adjust')openAdjust('feed');if(st==='toast')toast('Feed successfully!',60000);},
+  };
+  (S[scr]||S.wake)();
+  document.title='Tofu demo: '+d;})();
+
+/* ======================= boot ======================= */
+initShapes();
+if(!navigator.bluetooth&&!demo)$('warn').hidden=false;
+if(!demo){renderList();setSide(null);if(loadSaved().length){go('s-home');ov('shList',true);}else go('s-wake');}
+log('Ready. Saved Tofu -> Reconnect; none -> Add new.','sy');
+window.addEventListener('resize',()=>redraw());
 </script>
 </body>
 </html>
