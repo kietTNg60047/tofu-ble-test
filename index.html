@@ -945,7 +945,7 @@ function onStatus(e){const s=dec.decode(e.target.value).trim();log('RX status: '
   else if(s.indexOf('ACTIVATION_CODE:')===0){showActCode(s.slice(16).trim());}
   else if(s==='ACTIVATED'||s==='REGISTER_SUCCESS'){onActivated();}
   else if(s==='PAIRING_MODE'){log('Pairing mode','sy');}
-  else if(s.indexOf('RMD_OK:')===0){toast('Reminder saved');refreshReminders();}
+  else if(s.indexOf('RMD_OK:')===0){toast(lastRmdCmd==='del'?'Reminder deleted':'Reminder saved');refreshReminders();}
   else if(s.indexOf('RMD_ERR:')===0){toast(rmdErrText(s.slice(8).trim()));}}
 
 /* ======================= setup / activation ======================= */
@@ -977,11 +977,16 @@ function setBar(key,n){n=Math.max(0,Math.min(100,Math.round(n)));const m=STATC[k
 function setSide(batt){const cells=[...$('battCells').children];const on=batt==null?0:Math.max(batt>0?1:0,Math.round(batt/100*cells.length));
   cells.forEach((c,i)=>c.classList.toggle('on',i>=cells.length-on));}
 function setLevel(lv,xp,xpMax){$('hLevel').textContent=lv;$('hLv1').textContent=lv;$('hXp').textContent=xp;$('hXpMax').textContent=xpMax;$('lvBar').dataset.pct=xpMax?xp/xpMax*100:0;drawShape($('lvBar'));}
-let tofuBuf='';const tofuDec=new TextDecoder();
+let tofuBuf='';let tofuLast=0;const tofuDec=new TextDecoder();
 function onTofuStatus(e){const t=tofuDec.decode(e.target.value,{stream:true});log('RX tofu: '+t,'rx');
-  if(t.trimStart().startsWith('{'))tofuBuf='';           // new message starts -> drop a half-received one
+  // Khong doan "chunk bat dau bang { = message moi": chunk GIUA cua JSON dai
+  // hoan toan co the mo dau bang '{'. Cac chunk cua cung mot message den don
+  // dap (<800ms); im lang lau roi moi co chunk => message moi.
+  const now=Date.now();
+  if(now-tofuLast>800)tofuBuf='';
+  tofuLast=now;
   tofuBuf+=t;let j=null;
-  try{j=JSON.parse(tofuBuf);}catch(_){if(tofuBuf.length>2048||!tofuBuf.trim().startsWith('{'))tofuBuf='';return;}
+  try{j=JSON.parse(tofuBuf);}catch(_){if(tofuBuf.length>8192||!tofuBuf.trim().startsWith('{'))tofuBuf='';return;}
   tofuBuf='';applyStatus(j);}
 function applyStatus(j){
   if(j&&j.reminders){renderReminders(j.reminders);return;}   // tra loi cua lenh RMD?
@@ -1038,6 +1043,7 @@ $('btnSkipSetup').onclick=()=>{go('s-home');requestStatus();};
 $('btnMeet').onclick=()=>{go('s-home');requestStatus();};
 $('btnTofuMenu').onclick=()=>{renderList();ov('shList',true);};
 /* ======================= reminders (BLE: RMD+ / RMD- / RMD?) ======================= */
+let lastRmdCmd='add';
 function rmdErrText(r){return {NOTIME:'Tofu has no clock yet - connect it to Wi-Fi once',PAST:'That time is already in the past',FULL:'Max 10 reminders reached',NOTFOUND:'Reminder not found on device',BAD:'Invalid reminder'}[r]||('Reminder error: '+r);}
 function two(n){return String(n).padStart(2,'0');}
 function openReminders(){const d=new Date(Date.now()+3600e3);
@@ -1051,7 +1057,7 @@ function renderReminders(list){const box=$('rmdList');if(!box)return;
   box.innerHTML=list.slice().sort((a,b)=>a.t-b.t).map(r=>{const d=new Date(r.t*1000);
     const when=d.getFullYear()+'-'+two(d.getMonth()+1)+'-'+two(d.getDate())+' '+two(d.getHours())+':'+two(d.getMinutes());
     return `<div class="rmd-row ${r.s?'done':''}"><div class="rmd-txt"><b>${escapeHtml(r.c)}</b><div class="rmd-when">${when}</div></div>${badge(r.s)}<button class="rmd-del" data-id="${r.i}" aria-label="Delete"><svg class="ic s16"><use href="#i-x"/></svg></button></div>`;}).join('');
-  box.querySelectorAll('.rmd-del').forEach(b=>b.onclick=async()=>{try{await writeCred('RMD-:'+b.dataset.id);}catch(_){toast('Not connected to Tofu');}});}
+  box.querySelectorAll('.rmd-del').forEach(b=>b.onclick=async()=>{lastRmdCmd='del';try{await writeCred('RMD-:'+b.dataset.id);}catch(_){toast('Not connected to Tofu');}});}
 async function addReminder(){const dv=$('rmdDate').value,tv=$('rmdTime').value,txt=$('rmdText').value.trim();
   if(!dv||!tv){toast('Pick a date and a time');return;}
   if(!txt){toast('Type what to remind');return;}
