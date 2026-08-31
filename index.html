@@ -1058,8 +1058,11 @@ async function addReminder(){const dv=$('rmdDate').value,tv=$('rmdTime').value,t
   const epoch=Math.floor(new Date(dv+'T'+tv).getTime()/1000);   // gio dia phuong -> epoch UTC
   if(!(epoch>0)){toast('Invalid date/time');return;}
   if(epoch<Math.floor(Date.now()/1000)-60){toast('That time is already in the past');return;}
-  const cmd='RMD+:'+epoch+','+txt.replace(/[\r\n]+/g,' ');
+  const clean=txt.replace(/[\r\n]+/g,' ');
+  if(enc.encode(clean).length>99){toast('Reminder text is too long');return;}   // firmware luu toi da 99 byte UTF-8
+  const cmd='RMD+:'+epoch+','+clean;
   if(enc.encode(cmd).length>127){toast('Reminder text is too long');return;}
+  lastRmdCmd='add';
   try{await writeCred(cmd);$('rmdText').value='';}catch(_){toast('Not connected to Tofu');}}
 $('btnRmdSet').onclick=addReminder;
 $('btnBell').onclick=openReminders;
