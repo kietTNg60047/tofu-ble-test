@@ -570,6 +570,11 @@ html.frame .home-ind{display:block}
       </div>
     </div>
     <!-- Tofu Reminder -->
+    <div class="sheet-ov" id="shPortal" hidden><div class="sheet">
+      <i class="handle"></i><h2 class="sh-title">Wi-Fi Login Needed</h2>
+      <div class="sh-sub">This network shows a login page before allowing Internet</div>
+      <div id="portalBody"></div>
+    </div></div>
     <div class="sheet-ov" id="shRemind" hidden><div class="sheet">
       <i class="handle"></i><h2 class="sh-title">Tofu Reminder</h2>
       <div class="sh-sub">Scheduled reminders</div>
@@ -945,8 +950,41 @@ function onStatus(e){const s=dec.decode(e.target.value).trim();log('RX status: '
   else if(s.indexOf('ACTIVATION_CODE:')===0){showActCode(s.slice(16).trim());}
   else if(s==='ACTIVATED'||s==='REGISTER_SUCCESS'){onActivated();}
   else if(s==='PAIRING_MODE'){log('Pairing mode','sy');}
+  else if(s==='PORTAL_FOUND'){portalShow('found','');}
+  else if(s.indexOf('PORTAL_HELP:')===0){portalShow('help',s.slice(12).trim());}
+  else if(s==='PORTAL_OK'){portalShow('ok','');}
+  else if(s==='PORTAL_FAIL'){portalShow('fail','');}
+  else if(s==='PORTAL_NONET'){ov('shPortal',false);toast('This Wi-Fi has no Internet at all');}
   else if(s.indexOf('RMD_OK:')===0){toast(lastRmdCmd==='del'?'Reminder deleted':'Reminder saved');refreshReminders();}
   else if(s.indexOf('RMD_ERR:')===0){toast(rmdErrText(s.slice(8).trim()));}}
+
+/* ======================= captive portal wizard =======================
+   Firmware bao tung buoc qua 0xA005 (PORTAL_FOUND/HELP/OK/FAIL/NONET).
+   BLE song doc lap voi wifi dien thoai: nguoi dung doi wifi sang AP cuu ho
+   cua Tofu de bam dong y, app van nhan duoc trang thai va tu bao "xong". */
+function portalShow(st,ssid){
+  const b=$('portalBody');clearTimeout(portalShow.t);
+  const step=(n,txt)=>`<div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 22px;height:22px;border-radius:50%;background:#111;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">${n}</span><span style="font-size:14px;line-height:1.45">${txt}</span></div>`;
+  if(st==='found'){
+    b.innerHTML=`<div class="sh-sub" style="display:flex;gap:8px;align-items:center"><svg class="ic s16 spin"><use href="#i-loader"/></svg>Tofu hit a login page on this Wi-Fi. Setting up a helper hotspot…</div>`;
+  }else if(st==='help'){
+    b.innerHTML=`<div style="display:flex;flex-direction:column;gap:10px;margin:6px 0 4px">
+      ${step(1,'Keep this app open — Bluetooth stays connected the whole time.')}
+      ${step(2,'On this phone, join Wi-Fi <b>'+escapeHtml(ssid)+'</b> (no password).')}
+      ${step(3,'The network\u2019s login page pops up — tap <b>Agree / Accept</b>.')}
+      ${step(4,'Done! Tofu will confirm right here.')}
+    </div>
+    <div class="sh-sub" style="display:flex;gap:8px;align-items:center;margin-top:6px"><svg class="ic s16 spin"><use href="#i-loader"/></svg>Waiting for the login to finish…</div>`;
+  }else if(st==='ok'){
+    b.innerHTML=`<div class="sh-sub" style="font-size:15px">\u2705 Internet unlocked — Tofu is online!</div>`;
+    portalShow.t=setTimeout(()=>ov('shPortal',false),2600);
+  }else{
+    b.innerHTML=`<div class="sh-sub" style="font-size:15px">\u274C Time ran out before the login finished.</div>
+    <div class="sh-sub">Reconnect the Wi-Fi in Setup to try again.</div>
+    <div class="sh-actions"><button class="btn pri" data-shape="btn" onclick="ov('shPortal',false)"><span>Close</span></button></div>`;
+  }
+  ov('shPortal',true);
+}
 
 /* ======================= setup / activation ======================= */
 function gotoSetup(){go('s-setup');$('chk3').className='';$('chk3').innerHTML='<svg class="ic s12 spin"><use href="#i-loader"/></svg><span>Syncing Digital Tofu...</span>';$('codeBox').hidden=true;redraw($('s-setup'));}
