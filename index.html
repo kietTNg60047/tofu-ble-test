@@ -208,6 +208,20 @@ html.frame .sb{display:flex;justify-content:space-between;align-items:flex-start
 .input input::placeholder{color:var(--n300);font-size:14px;letter-spacing:0}
 .input input[type=password]{font-size:26px;line-height:1;letter-spacing:6px;color:var(--ink)}
 .input .eye{width:24px;height:24px;color:var(--k);flex:none}
+
+/* ---------- reminders ---------- */
+.rmd-rows{display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto}
+.rmd-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:#f4f4f4}
+.rmd-row.done{opacity:.55}
+.rmd-when{font-size:12px;color:var(--n500);line-height:16px}
+.rmd-txt{flex:1;min-width:0}
+.rmd-txt b{display:block;font-size:14px;line-height:20px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rmd-del{width:32px;height:32px;display:grid;place-items:center;color:#cd2424;flex:none}
+.rmd-badge{font-size:10px;line-height:14px;padding:1px 6px;border-radius:8px;background:#e6e6e6;color:var(--n500);flex:none}
+.rmd-badge.p{background:#ffe4d3;color:#fc6828}
+.rmd-dt{display:flex;gap:12px}
+.rmd-dt .input{flex:1;padding:0 10px}
+.rmd-empty{padding:18px 0;text-align:center;font-size:14px;color:var(--n500)}
 .nf-box{position:relative;height:138px;border-radius:4px;background:#b6b2b2;overflow:hidden;display:grid;place-items:center;margin-top:8px}
 .nf-box img{width:159px;height:129px;object-fit:contain}
 .nf-box:after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.6)}
@@ -555,6 +569,21 @@ html.frame .home-ind{display:block}
         </div>
       </div>
     </div>
+    <!-- Tofu Reminder -->
+    <div class="sheet-ov" id="shRemind" hidden><div class="sheet">
+      <i class="handle"></i><h2 class="sh-title">Tofu Reminder</h2>
+      <div class="sh-sub">Scheduled reminders</div>
+      <div class="rmd-rows" id="rmdList"><div class="rmd-empty">No reminders yet.</div></div>
+      <div class="sh-sub" style="margin-top:4px">New reminder</div>
+      <div class="inputs" style="gap:12px">
+        <div class="rmd-dt">
+          <label class="input"><input type="date" id="rmdDate"></label>
+          <label class="input" style="flex:.72"><input type="time" id="rmdTime"></label>
+        </div>
+        <label class="input"><input type="text" id="rmdText" maxlength="99" placeholder="What should Tofu remind you about?"></label>
+      </div>
+      <div class="sh-actions"><button class="btn pri" data-shape="btn" id="btnRmdSet"><span>Set reminder</span></button></div>
+    </div></div>
     <!-- Select Wi-Fi (in app) -->
     <div class="sheet-ov" id="shWifi" hidden><div class="sheet">
       <i class="handle"></i>
@@ -915,7 +944,9 @@ function onStatus(e){const s=dec.decode(e.target.value).trim();log('RX status: '
   else if(s==='WIFI_DISCONNECT'){setWifiState('',0);toast('Wi-Fi disconnected');}
   else if(s.indexOf('ACTIVATION_CODE:')===0){showActCode(s.slice(16).trim());}
   else if(s==='ACTIVATED'||s==='REGISTER_SUCCESS'){onActivated();}
-  else if(s==='PAIRING_MODE'){log('Pairing mode','sy');}}
+  else if(s==='PAIRING_MODE'){log('Pairing mode','sy');}
+  else if(s.indexOf('RMD_OK:')===0){toast('Reminder saved');refreshReminders();}
+  else if(s.indexOf('RMD_ERR:')===0){toast(rmdErrText(s.slice(8).trim()));}}
 
 /* ======================= setup / activation ======================= */
 function gotoSetup(){go('s-setup');$('chk3').className='';$('chk3').innerHTML='<svg class="ic s12 spin"><use href="#i-loader"/></svg><span>Syncing Digital Tofu...</span>';$('codeBox').hidden=true;redraw($('s-setup'));}
@@ -953,6 +984,7 @@ function onTofuStatus(e){const t=tofuDec.decode(e.target.value,{stream:true});lo
   try{j=JSON.parse(tofuBuf);}catch(_){if(tofuBuf.length>2048||!tofuBuf.trim().startsWith('{'))tofuBuf='';return;}
   tofuBuf='';applyStatus(j);}
 function applyStatus(j){
+  if(j&&j.reminders){renderReminders(j.reminders);return;}   // tra loi cua lenh RMD?
   if(j.name)$('hName').textContent=j.name;
   if('hunger'in j)setBar('hunger',j.hunger);if('thirst'in j)setBar('thirst',j.thirst);if('battery'in j)setBar('battery',j.battery);
   /* level/xp/beans/bonding/mood: firmware may not send them yet -> show when present */
@@ -1005,7 +1037,32 @@ $('wifiModalX').onclick=()=>ov('wifiModal',false);
 $('btnSkipSetup').onclick=()=>{go('s-home');requestStatus();};
 $('btnMeet').onclick=()=>{go('s-home');requestStatus();};
 $('btnTofuMenu').onclick=()=>{renderList();ov('shList',true);};
-$('btnBell').onclick=()=>toast('No notifications');
+/* ======================= reminders (BLE: RMD+ / RMD- / RMD?) ======================= */
+function rmdErrText(r){return {NOTIME:'Tofu has no clock yet - connect it to Wi-Fi once',PAST:'That time is already in the past',FULL:'Max 10 reminders reached',NOTFOUND:'Reminder not found on device',BAD:'Invalid reminder'}[r]||('Reminder error: '+r);}
+function two(n){return String(n).padStart(2,'0');}
+function openReminders(){const d=new Date(Date.now()+3600e3);
+  $('rmdDate').value=d.getFullYear()+'-'+two(d.getMonth()+1)+'-'+two(d.getDate());
+  $('rmdTime').value=two(d.getHours())+':'+two(d.getMinutes());
+  ov('shRemind',true);refreshReminders();}
+async function refreshReminders(){try{await writeCred('RMD?');}catch(_){renderReminders(null);}}
+function renderReminders(list){const box=$('rmdList');if(!box)return;
+  if(!list||!list.length){box.innerHTML='<div class="rmd-empty">'+(list?'No reminders yet.':'Not connected to Tofu.')+'</div>';return;}
+  const badge=st=>st===0?'<span class="rmd-badge p">pending</span>':st===1?'<span class="rmd-badge">done</span>':'<span class="rmd-badge">missed</span>';
+  box.innerHTML=list.slice().sort((a,b)=>a.t-b.t).map(r=>{const d=new Date(r.t*1000);
+    const when=d.getFullYear()+'-'+two(d.getMonth()+1)+'-'+two(d.getDate())+' '+two(d.getHours())+':'+two(d.getMinutes());
+    return `<div class="rmd-row ${r.s?'done':''}"><div class="rmd-txt"><b>${escapeHtml(r.c)}</b><div class="rmd-when">${when}</div></div>${badge(r.s)}<button class="rmd-del" data-id="${r.i}" aria-label="Delete"><svg class="ic s16"><use href="#i-x"/></svg></button></div>`;}).join('');
+  box.querySelectorAll('.rmd-del').forEach(b=>b.onclick=async()=>{try{await writeCred('RMD-:'+b.dataset.id);}catch(_){toast('Not connected to Tofu');}});}
+async function addReminder(){const dv=$('rmdDate').value,tv=$('rmdTime').value,txt=$('rmdText').value.trim();
+  if(!dv||!tv){toast('Pick a date and a time');return;}
+  if(!txt){toast('Type what to remind');return;}
+  const epoch=Math.floor(new Date(dv+'T'+tv).getTime()/1000);   // gio dia phuong -> epoch UTC
+  if(!(epoch>0)){toast('Invalid date/time');return;}
+  if(epoch<Math.floor(Date.now()/1000)-60){toast('That time is already in the past');return;}
+  const cmd='RMD+:'+epoch+','+txt.replace(/[\r\n]+/g,' ');
+  if(enc.encode(cmd).length>127){toast('Reminder text is too long');return;}
+  try{await writeCred(cmd);$('rmdText').value='';}catch(_){toast('Not connected to Tofu');}}
+$('btnRmdSet').onclick=addReminder;
+$('btnBell').onclick=openReminders;
 $('btnMenu').onclick=()=>ov('shLog',true);
 $('btnLogClose').onclick=()=>ov('shLog',false);
 $('sideState').onclick=()=>{ov('shWifi',true);scan();};
