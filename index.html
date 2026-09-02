@@ -623,6 +623,11 @@ html.frame .home-ind{display:block}
         <button class="btn sec" data-shape="btn" data-lang="zh-CN"><span>中文</span></button>
         <button class="btn sec" data-shape="btn" data-lang="ja-JP"><span>日本語</span></button>
       </div>
+      <div class="sh-sub" style="margin-top:2px">18+ mode <span style="color:#c9483f;font-weight:700">(adult — Tofu may swear)</span></div>
+      <div style="display:flex;gap:8px;margin:2px 0 6px">
+        <button class="btn sec" data-shape="btn" id="btnAdultOn"><span>Enable 18+</span></button>
+        <button class="btn sec" data-shape="btn" id="btnAdultOff"><span>Disable</span></button>
+      </div>
       <div class="sh-actions" style="padding-top:0"><button class="btn sec" data-shape="btn" id="btnRefresh"><span>Refresh</span></button><button class="btn pri" data-shape="btn" id="btnChangeWifi"><span>Change Wi-Fi</span></button></div>
       <div class="logbox" id="log"></div>
       <button class="ghost" id="btnForgetAll">Forget all saved Tofu</button>
@@ -964,6 +969,9 @@ function onStatus(e){const s=dec.decode(e.target.value).trim();log('RX status: '
   else if(s==='PORTAL_OK'){portalShow('ok','');}
   else if(s==='PORTAL_FAIL'){portalShow('fail','');}
   else if(s==='PORTAL_NONET'){ov('shPortal',false);toast('This Wi-Fi has no Internet at all');}
+  else if(s==='ADULT_OK:1'){toast('18+ mode ON \u2014 Tofu may swear now \ud83d\ude08',3000);}
+  else if(s==='ADULT_OK:0'){toast('18+ mode OFF \u2014 back to family friendly');}
+  else if(s==='ADULT_ERR'){toast('18+ toggle rejected');}
   else if(s.indexOf('LANG_OK:')===0){toast('Language set to '+s.slice(8)+' \u2014 restart Tofu to apply',3500);}
   else if(s==='LANG_ERR'){toast('Language code rejected');}
   else if(s.indexOf('RMD_OK:')===0){toast(lastRmdCmd==='del'?'Reminder deleted':'Reminder saved');refreshReminders();}
@@ -1124,6 +1132,10 @@ $('btnBell').onclick=openReminders;
 $('btnMenu').onclick=()=>ov('shLog',true);
 document.querySelectorAll('#langRow [data-lang]').forEach(b=>b.onclick=async()=>{
   try{await writeCred('LANG:'+b.dataset.lang);}catch(_){toast('Not connected to Tofu');}});
+$('btnAdultOn').onclick=async()=>{
+  if(!confirm('18+ mode: Tofu will use swear words when bonked or angry. Confirm you are 18 or older?'))return;
+  try{await writeCred('ADULT:1');}catch(_){toast('Not connected to Tofu');}};
+$('btnAdultOff').onclick=async()=>{try{await writeCred('ADULT:0');}catch(_){toast('Not connected to Tofu');}};
 $('btnLogClose').onclick=()=>ov('shLog',false);
 $('sideState').onclick=()=>{ov('shWifi',true);scan();};
 $('btnWifi2Close').onclick=()=>ov('shWifi',false);
