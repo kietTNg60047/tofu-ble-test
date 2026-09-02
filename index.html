@@ -969,8 +969,8 @@ function onStatus(e){const s=dec.decode(e.target.value).trim();log('RX status: '
   else if(s==='PORTAL_OK'){portalShow('ok','');}
   else if(s==='PORTAL_FAIL'){portalShow('fail','');}
   else if(s==='PORTAL_NONET'){ov('shPortal',false);toast('This Wi-Fi has no Internet at all');}
-  else if(s==='ADULT_OK:1'){toast('18+ mode ON \u2014 Tofu may swear now \ud83d\ude08',3000);}
-  else if(s==='ADULT_OK:0'){toast('18+ mode OFF \u2014 back to family friendly');}
+  else if(s==='ADULT_OK:1'){paintAdult(true);toast('18+ mode ON \u2014 Tofu may swear now \ud83d\ude08',3000);}
+  else if(s==='ADULT_OK:0'){paintAdult(false);toast('18+ mode OFF \u2014 back to family friendly');}
   else if(s==='ADULT_ERR'){toast('18+ toggle rejected');}
   else if(s.indexOf('LANG_OK:')===0){toast('Language set to '+s.slice(8)+' \u2014 restart Tofu to apply',3500);}
   else if(s==='LANG_ERR'){toast('Language code rejected');}
@@ -1045,7 +1045,15 @@ function onTofuStatus(e){const t=tofuDec.decode(e.target.value,{stream:true});lo
   tofuBuf+=t;let j=null;
   try{j=JSON.parse(tofuBuf);}catch(_){if(tofuBuf.length>8192||!tofuBuf.trim().startsWith('{'))tofuBuf='';return;}
   tofuBuf='';applyStatus(j);}
+let adultKnown=null;
+function paintAdult(on){adultKnown=on;
+  const a=$('btnAdultOn'),b=$('btnAdultOff');if(!a||!b)return;
+  a.style.background=on?'#c9483f':'';a.style.color=on?'#fff':'';a.style.borderColor=on?'#c9483f':'';
+  b.style.background=(on===false)?'#16a34a':'';b.style.color=(on===false)?'#fff':'';b.style.borderColor=(on===false)?'#16a34a':'';
+  a.querySelector('span').textContent=on?'18+ is ON':'Enable 18+';
+  b.querySelector('span').textContent=(on===false)?'Family mode ON':'Disable';}
 function applyStatus(j){
+  if(typeof j.adult!=='undefined')paintAdult(j.adult==1);
   if(j&&j.reminders){renderReminders(j.reminders);return;}   // tra loi cua lenh RMD?
   if(j.name)$('hName').textContent=j.name;
   if('hunger'in j)setBar('hunger',j.hunger);if('thirst'in j)setBar('thirst',j.thirst);if('battery'in j)setBar('battery',j.battery);
