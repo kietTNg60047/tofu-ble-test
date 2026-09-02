@@ -614,6 +614,15 @@ html.frame .home-ind{display:block}
     <!-- Log / tools -->
     <div class="sheet-ov" id="shLog" hidden><div class="sheet">
       <i class="handle"></i><h2 class="sh-title">Connection log</h2>
+      <div class="sh-sub" style="margin-top:2px">Device language (voice)</div>
+      <div id="langRow" style="display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 6px">
+        <button class="btn sec" data-shape="btn" data-lang="en-US"><span>English</span></button>
+        <button class="btn sec" data-shape="btn" data-lang="vi-VN"><span>Tiếng Việt</span></button>
+        <button class="btn sec" data-shape="btn" data-lang="hi-IN"><span>हिन्दी</span></button>
+        <button class="btn sec" data-shape="btn" data-lang="lo-LA"><span>ລາວ</span></button>
+        <button class="btn sec" data-shape="btn" data-lang="zh-CN"><span>中文</span></button>
+        <button class="btn sec" data-shape="btn" data-lang="ja-JP"><span>日本語</span></button>
+      </div>
       <div class="sh-actions" style="padding-top:0"><button class="btn sec" data-shape="btn" id="btnRefresh"><span>Refresh</span></button><button class="btn pri" data-shape="btn" id="btnChangeWifi"><span>Change Wi-Fi</span></button></div>
       <div class="logbox" id="log"></div>
       <button class="ghost" id="btnForgetAll">Forget all saved Tofu</button>
@@ -955,6 +964,8 @@ function onStatus(e){const s=dec.decode(e.target.value).trim();log('RX status: '
   else if(s==='PORTAL_OK'){portalShow('ok','');}
   else if(s==='PORTAL_FAIL'){portalShow('fail','');}
   else if(s==='PORTAL_NONET'){ov('shPortal',false);toast('This Wi-Fi has no Internet at all');}
+  else if(s.indexOf('LANG_OK:')===0){toast('Language set to '+s.slice(8)+' \u2014 restart Tofu to apply',3500);}
+  else if(s==='LANG_ERR'){toast('Language code rejected');}
   else if(s.indexOf('RMD_OK:')===0){toast(lastRmdCmd==='del'?'Reminder deleted':'Reminder saved');refreshReminders();}
   else if(s.indexOf('RMD_ERR:')===0){toast(rmdErrText(s.slice(8).trim()));}}
 
@@ -1111,6 +1122,8 @@ async function addReminder(){const dv=$('rmdDate').value,tv=$('rmdTime').value,t
 $('btnRmdSet').onclick=addReminder;
 $('btnBell').onclick=openReminders;
 $('btnMenu').onclick=()=>ov('shLog',true);
+document.querySelectorAll('#langRow [data-lang]').forEach(b=>b.onclick=async()=>{
+  try{await writeCred('LANG:'+b.dataset.lang);}catch(_){toast('Not connected to Tofu');}});
 $('btnLogClose').onclick=()=>ov('shLog',false);
 $('sideState').onclick=()=>{ov('shWifi',true);scan();};
 $('btnWifi2Close').onclick=()=>ov('shWifi',false);
