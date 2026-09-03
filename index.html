@@ -1137,7 +1137,7 @@ async function addReminder(){const dv=$('rmdDate').value,tv=$('rmdTime').value,t
   try{await writeCred(cmd);$('rmdText').value='';}catch(_){toast('Not connected to Tofu');}}
 $('btnRmdSet').onclick=addReminder;
 $('btnBell').onclick=openReminders;
-$('btnMenu').onclick=()=>ov('shLog',true);
+$('btnMenu').onclick=()=>{ov('shLog',true);try{requestStatus();}catch(_){}};
 document.querySelectorAll('#langRow [data-lang]').forEach(b=>b.onclick=async()=>{
   try{await writeCred('LANG:'+b.dataset.lang);}catch(_){toast('Not connected to Tofu');}});
 $('btnAdultOn').onclick=async()=>{
