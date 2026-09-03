@@ -613,7 +613,11 @@ html.frame .home-ind{display:block}
     </div></div>
     <!-- Log / tools -->
     <div class="sheet-ov" id="shLog" hidden><div class="sheet">
-      <i class="handle"></i><h2 class="sh-title">Connection log</h2>
+      <i class="handle"></i>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:2px">
+        <button id="btnLogBack" aria-label="Back" style="flex:0 0 auto;width:44px;height:44px;border:1px solid #e2e2e6;border-radius:12px;background:#f4f4f6;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center">←</button>
+        <h2 class="sh-title" style="margin:0">Settings &amp; log</h2>
+      </div>
       <div class="sh-sub" style="margin-top:2px">Device language (voice)</div>
       <div id="langRow" style="display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 6px">
         <button class="btn sec" data-shape="btn" data-lang="en-US"><span>English</span></button>
@@ -631,7 +635,7 @@ html.frame .home-ind{display:block}
       <div class="sh-actions" style="padding-top:0"><button class="btn sec" data-shape="btn" id="btnRefresh"><span>Refresh</span></button><button class="btn pri" data-shape="btn" id="btnChangeWifi"><span>Change Wi-Fi</span></button></div>
       <div class="logbox" id="log"></div>
       <button class="ghost" id="btnForgetAll">Forget all saved Tofu</button>
-      <button class="ghost" id="btnLogClose">Close</button>
+      <button class="btn sec" data-shape="btn" id="btnLogClose" style="margin-top:6px"><span>Close</span></button>
     </div></div>
   </section>
 
@@ -653,10 +657,10 @@ html.frame .home-ind{display:block}
     <div class="drag">
       <svg class="drag-svg" data-shape="dragtop"></svg><i class="ostrip top"></i><i class="ostrip bot"></i>
       <div class="drag-in">
-        <div class="drag-hint">Hold the item, drag and drop</div>
+        <div class="drag-hint">Tap item to pick amount · drag to mouth to feed</div>
         <div class="items" id="items">
-          <button class="item" data-kind="feed"><img src="assets/icons/chicken.png" data-emoji="🍗" alt=""><div class="it-t"><b>Chicken leg</b><span>+3% Feed</span></div><em>∞</em></button>
-          <button class="item" data-kind="drink"><img src="assets/icons/water.png" data-emoji="🥛" alt=""><div class="it-t"><b>Water glass</b><span>+3% Drink</span></div><em>∞</em></button>
+          <button class="item" data-kind="feed"><img src="assets/icons/chicken.png" data-emoji="🍗" alt=""><div class="it-t"><b>Chicken leg</b><span>+3% Feed</span></div><em id="qbFeed">×1</em></button>
+          <button class="item" data-kind="drink"><img src="assets/icons/water.png" data-emoji="🥛" alt=""><div class="it-t"><b>Water glass</b><span>+3% Drink</span></div><em id="qbDrink">×1</em></button>
         </div>
       </div>
     </div>
@@ -1048,10 +1052,10 @@ function onTofuStatus(e){const t=tofuDec.decode(e.target.value,{stream:true});lo
 let adultKnown=null;
 function paintAdult(on){adultKnown=on;
   const a=$('btnAdultOn'),b=$('btnAdultOff');if(!a||!b)return;
-  a.style.background=on?'#c9483f':'';a.style.color=on?'#fff':'';a.style.borderColor=on?'#c9483f':'';
-  b.style.background=(on===false)?'#16a34a':'';b.style.color=(on===false)?'#fff':'';b.style.borderColor=(on===false)?'#16a34a':'';
+  a.style.background=on?'#ff7a1a':'';a.style.color=on?'#fff':'';a.style.borderColor=on?'#ff7a1a':'';
+  b.style.background='';b.style.color='';b.style.borderColor='';
   a.querySelector('span').textContent=on?'18+ is ON':'Enable 18+';
-  b.querySelector('span').textContent=(on===false)?'Family mode ON':'Disable';}
+  b.querySelector('span').textContent='Disable';}
 function applyStatus(j){
   if(typeof j.adult!=='undefined')paintAdult(j.adult==1);
   if(j&&j.reminders){renderReminders(j.reminders);return;}   // tra loi cua lenh RMD?
@@ -1068,13 +1072,16 @@ function setWifiState(ssid,signal){wifiSSID=ssid||'';
   $('sideState').title=wifiSSID?(wifiSSID+' \u00b7 '+(signal||0)+'%'):'No Wi-Fi';}
 
 /* ======================= feed ======================= */
-let feedKind='feed',feedQty=1;
-function openAdjust(kind){feedKind=kind;feedQty=1;$('amounts').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.n==='1'));
+let feedKind='feed',feedQty=1;const itemQty={feed:1,drink:1};
+/* UX 03/09: chon SO LUONG truoc ngay tai mon (badge o goc), keo toi mieng la an luon */
+function paintQty(){const f=$('qbFeed'),d=$('qbDrink');if(f)f.textContent='\u00D7'+itemQty.feed;if(d)d.textContent='\u00D7'+itemQty.drink;}
+function openAdjust(kind){feedKind=kind;feedQty=itemQty[kind];$('amounts').querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.n===feedQty));
   const im=$('adjIcon');if(im&&im.tagName==='IMG')im.src=kind==='feed'?'assets/icons/chicken.png':'assets/icons/water.png';
   $('adjust').hidden=false;redraw($('adjust'));}
 $('amounts').onclick=e=>{const b=e.target.closest('button');if(!b)return;feedQty=+b.dataset.n;$('amounts').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));};
 $('adjNo').onclick=()=>$('adjust').hidden=true;
-$('adjYes').onclick=()=>{$('adjust').hidden=true;writeStr(feedKind,String(feedQty)).then(()=>{toast(feedKind==='feed'?'Feed successfully!':'Drink successfully!');setTimeout(requestStatus,600);}).catch(e=>{log('write fail '+e.message,'er');toast('Not connected to Tofu');});};
+$('adjYes').onclick=()=>{itemQty[feedKind]=feedQty;paintQty();$('adjust').hidden=true;};
+function sendItem(kind){writeStr(kind,String(itemQty[kind])).then(()=>{toast((kind==='feed'?'Fed \u00D7':'Drank \u00D7')+itemQty[kind]+'!');setTimeout(requestStatus,600);}).catch(e=>{log('write fail '+e.message,'er');toast('Not connected to Tofu');});}
 /* drag & drop item -> mascot */
 (function(){let ghost=null,kind='',sx=0,sy=0,moved=false;const stage=$('s-feed'),m=$('feedMascot');
   $('items').addEventListener('pointerdown',e=>{const it=e.target.closest('.item');if(!it)return;kind=it.dataset.kind;sx=e.clientX;sy=e.clientY;moved=false;
@@ -1082,7 +1089,8 @@ $('adjYes').onclick=()=>{$('adjust').hidden=true;writeStr(feedKind,String(feedQt
   function mv(e){if(!ghost)return;const r=stage.getBoundingClientRect();ghost.style.left=(e.clientX-r.left-22)+'px';ghost.style.top=(e.clientY-r.top-22)+'px';
     if(Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)>6)moved=true;const mr=m.getBoundingClientRect();m.classList.toggle('hot',e.clientX>mr.left&&e.clientX<mr.right&&e.clientY>mr.top&&e.clientY<mr.bottom);}
   document.addEventListener('pointermove',mv);
-  document.addEventListener('pointerup',e=>{if(!ghost)return;const over=m.classList.contains('hot');ghost.remove();ghost=null;m.classList.remove('hot');if(over||!moved)openAdjust(kind);});})();
+  document.addEventListener('pointerup',e=>{if(!ghost)return;const over=m.classList.contains('hot');ghost.remove();ghost=null;m.classList.remove('hot');
+    if(over&&moved)sendItem(kind);else if(!moved)openAdjust(kind);});})();
 
 /* ======================= wiring ======================= */
 $('btnScanQR').onclick=gotoScan;
@@ -1144,7 +1152,7 @@ $('btnAdultOn').onclick=async()=>{
   if(!confirm('18+ mode: Tofu will use swear words when bonked or angry. Confirm you are 18 or older?'))return;
   try{await writeCred('ADULT:1');}catch(_){toast('Not connected to Tofu');}};
 $('btnAdultOff').onclick=async()=>{try{await writeCred('ADULT:0');}catch(_){toast('Not connected to Tofu');}};
-$('btnLogClose').onclick=()=>ov('shLog',false);
+$('btnLogClose').onclick=()=>ov('shLog',false);$('btnLogBack').onclick=()=>ov('shLog',false);
 $('sideState').onclick=()=>{ov('shWifi',true);scan();};
 $('btnWifi2Close').onclick=()=>ov('shWifi',false);
 $('btnWifi2Rescan').onclick=scan;
