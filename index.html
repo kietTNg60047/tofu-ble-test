@@ -529,8 +529,8 @@ html.frame .home-ind{display:block}
           <div class="stat" data-shape="stat" style="--gc:#fc6828"><div class="stat-l"><span class="tile30" style="--tile:#ffe4d3"><img src="assets/icons/chicken.png" data-emoji="🍗" alt=""></span><b>Feed</b></div><div class="stat-r"><div class="gauge" id="gFeed"><i></i><i></i><i></i><i></i><i></i></div><b id="vFeed">--%</b></div></div>
           <div class="stat" data-shape="stat" style="--gc:#0ac7ff"><div class="stat-l"><span class="tile30" style="--tile:#b8e7f8"><img src="assets/icons/water.png" data-emoji="🥛" alt=""></span><b>Drink</b></div><div class="stat-r"><div class="gauge" id="gDrink"><i></i><i></i><i></i><i></i><i></i></div><b id="vDrink">--%</b></div></div>
           <div class="stat" data-shape="stat" style="--gc:#00ea90"><div class="stat-l"><span class="tile30" style="--tile:#bafdde"><img src="assets/icons/battery.png" data-emoji="🔋" alt=""></span><b>Battery</b></div><div class="stat-r"><div class="gauge" id="gBat"><i></i><i></i><i></i><i></i><i></i></div><b id="vBat">--%</b></div></div>
-          <div class="stat" data-shape="stat" style="--gc:#ee78a2"><div class="stat-l"><span class="tile30" style="--tile:#f9d1e1"><img src="assets/icons/heart.png" data-emoji="💕" alt=""></span><b>Bonding level</b></div><div class="stat-r"><div class="gauge" id="gBond"><i></i><i></i><i></i><i></i><i></i></div><b id="vBond">--%</b></div></div>
           <div class="stat" data-shape="stat" style="--gc:#8b5cf6"><div class="stat-l"><span class="tile30" style="--tile:#e6ddff"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#000" stroke-width="2" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9a4 4 0 0 1 0 6" stroke-linecap="round"/></svg></span><b>Volume</b></div><div class="stat-r vol-r"><button class="vb" id="btnVolDn" aria-label="Volume down">&minus;</button><div class="gauge" id="gVol" style="width:60px"><i></i><i></i><i></i><i></i><i></i></div><button class="vb" id="btnVolUp" aria-label="Volume up">+</button><b id="vVol" style="min-width:36px;text-align:right">--</b></div></div>
+          <div class="stat" data-shape="stat" style="--gc:#ee78a2"><div class="stat-l"><span class="tile30" style="--tile:#f9d1e1"><img src="assets/icons/heart.png" data-emoji="💕" alt=""></span><b>Bonding level</b></div><div class="stat-r"><div class="gauge" id="gBond"><i></i><i></i><i></i><i></i><i></i></div><b id="vBond">--%</b></div></div>
         </div>
       </div>
     </div>
@@ -618,7 +618,7 @@ html.frame .home-ind{display:block}
       <i class="handle"></i>
       <div style="display:flex;align-items:center;gap:10px;margin-top:2px">
         <button id="btnLogBack" aria-label="Back" style="flex:0 0 auto;width:44px;height:44px;border:1px solid #e2e2e6;border-radius:12px;background:#f4f4f6;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center">←</button>
-        <h2 class="sh-title" style="margin:0">Settings &amp; log</h2>
+        <h2 class="sh-title" style="margin:0">Settings &amp; log <span id="appBuild" style="font-size:11px;font-weight:400;color:#858281;margin-left:6px">build 05/09 · vol</span></h2>
       </div>
       <div class="sh-sub" style="margin-top:2px">Device language (voice)</div>
       <div id="langRow" style="display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 6px">
@@ -638,6 +638,7 @@ html.frame .home-ind{display:block}
       <div class="logbox" id="log"></div>
       <button class="ghost" id="btnForgetAll">Forget all saved Tofu</button>
       <button class="btn sec" data-shape="btn" id="btnLogClose" style="margin-top:6px"><span>Close</span></button>
+      <button class="ghost" id="btnReloadApp">Reload app (fetch newest version)</button>
     </div></div>
   </section>
 
@@ -1160,7 +1161,7 @@ $('btnAdultOn').onclick=async()=>{
 $('btnAdultOff').onclick=async()=>{try{await writeCred('ADULT:0');}catch(_){toast('Not connected to Tofu');}};
 $('btnVolDn').onclick=async()=>{try{await writeCred('VOL:-');}catch(_){toast('Not connected to Tofu');}};
 $('btnVolUp').onclick=async()=>{try{await writeCred('VOL:+');}catch(_){toast('Not connected to Tofu');}};
-$('btnLogClose').onclick=()=>ov('shLog',false);$('btnLogBack').onclick=()=>ov('shLog',false);
+$('btnLogClose').onclick=()=>ov('shLog',false);$('btnLogBack').onclick=()=>ov('shLog',false);$('btnReloadApp').onclick=()=>{location.replace(location.pathname+'?v='+Date.now());};
 $('sideState').onclick=()=>{ov('shWifi',true);scan();};
 $('btnWifi2Close').onclick=()=>ov('shWifi',false);
 $('btnWifi2Rescan').onclick=scan;
